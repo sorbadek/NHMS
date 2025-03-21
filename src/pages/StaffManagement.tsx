@@ -1,5 +1,6 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import HospitalLayout from "@/components/HospitalLayout";
 import { 
   Card, 
@@ -27,44 +28,128 @@ import {
   BadgeCheck,
   Clock
 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useQuery } from "@tanstack/react-query";
+
+interface Staff {
+  id: string;
+  name: string;
+  role: string;
+  department: string;
+  email: string;
+  phone: string;
+  status: string;
+}
 
 const StaffManagement = () => {
+  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentHospitalId, setCurrentHospitalId] = useState<string | null>(null);
   
-  // Mock data for staff
-  const staffMembers = [
-    { id: "S-2023-001", name: "Dr. Sarah Wilson", role: "Cardiologist", department: "Cardiology", email: "sarah.wilson@nhms.gov.ng", phone: "08012345678", status: "On Duty" },
-    { id: "S-2023-002", name: "Dr. James Brown", role: "Neurologist", department: "Neurology", email: "james.brown@nhms.gov.ng", phone: "08023456789", status: "On Duty" },
-    { id: "S-2023-003", name: "Dr. Emily Davis", role: "Orthopedic Surgeon", department: "Orthopedics", email: "emily.davis@nhms.gov.ng", phone: "08034567890", status: "Off Duty" },
-    { id: "S-2023-004", name: "Dr. Michael Lee", role: "Ophthalmologist", department: "Ophthalmology", email: "michael.lee@nhms.gov.ng", phone: "08045678901", status: "On Duty" },
-    { id: "S-2023-005", name: "Nurse Janet Adeyemi", role: "Head Nurse", department: "Nursing", email: "janet.adeyemi@nhms.gov.ng", phone: "08056789012", status: "On Duty" },
-    { id: "S-2023-006", name: "Nurse Peter Okafor", role: "Staff Nurse", department: "Emergency", email: "peter.okafor@nhms.gov.ng", phone: "08067890123", status: "On Duty" },
-    { id: "S-2023-007", name: "Tech David Nwachukwu", role: "Lab Technician", department: "Laboratory", email: "david.nwachukwu@nhms.gov.ng", phone: "08078901234", status: "On Leave" },
-    { id: "S-2023-008", name: "Pharm. Funmi Bassey", role: "Pharmacist", department: "Pharmacy", email: "funmi.bassey@nhms.gov.ng", phone: "08089012345", status: "On Duty" },
-  ];
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (sessionData?.session?.user) {
+        setCurrentUserId(sessionData.session.user.id);
+        
+        // Get user's hospital
+        const { data } = await supabase
+          .from('hospital_staff')
+          .select('hospital_id')
+          .eq('user_id', sessionData.session.user.id)
+          .single();
+        
+        if (data) {
+          setCurrentHospitalId(data.hospital_id);
+        }
+      } else {
+        // Redirect to login if not authenticated
+        navigate('/auth');
+      }
+    };
+    
+    checkSession();
+  }, [navigate]);
+
+  // Fetch staff data
+  const { data: staffData, isLoading, error } = useQuery({
+    queryKey: ['staff', currentHospitalId],
+    queryFn: async () => {
+      if (!currentHospitalId) return [];
+      
+      const { data, error } = await supabase
+        .from('hospital_staff')
+        .select(`
+          id,
+          role,
+          department,
+          status,
+          user_id,
+          users:user_id (
+            full_name,
+            email,
+            phone
+          )
+        `)
+        .eq('hospital_id', currentHospitalId);
+      
+      if (error) throw error;
+      
+      return data.map(staff => ({
+        id: staff.id,
+        name: staff.users?.full_name || 'Unknown',
+        role: staff.role || 'Undefined',
+        department: staff.department || 'General',
+        email: staff.users?.email || 'N/A',
+        phone: staff.users?.phone || 'N/A',
+        status: staff.status || 'Unknown'
+      }));
+    },
+    enabled: !!currentHospitalId
+  });
 
   // Filter staff based on search term
-  const filteredStaff = staffMembers.filter(staff => 
+  const filteredStaff = staffData?.filter(staff => 
     staff.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    staff.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
     staff.role.toLowerCase().includes(searchTerm.toLowerCase()) ||
     staff.department.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  ) || [];
 
   // Count staff by role
-  const roleCount = staffMembers.reduce((acc, staff) => {
-    const role = staff.role.includes("Dr.") ? "Doctors" : 
-                staff.role.includes("Nurse") ? "Nurses" : "Other Staff";
+  const roleCount = staffData?.reduce((acc: Record<string, number>, staff) => {
+    const role = staff.role.includes("doctor") ? "Doctors" : 
+               staff.role.includes("nurse") ? "Nurses" : "Other Staff";
     acc[role] = (acc[role] || 0) + 1;
     return acc;
-  }, {} as Record<string, number>);
+  }, {}) || {};
+
+  // Navigate to staff registration page
+  const handleAddStaff = () => {
+    navigate('/staff-registration');
+  };
+
+  if (error) {
+    return (
+      <HospitalLayout>
+        <div className="p-6">
+          <div className="bg-red-50 border border-red-200 rounded-md p-4 text-red-800">
+            Error loading staff data. Please try again later.
+          </div>
+        </div>
+      </HospitalLayout>
+    );
+  }
 
   return (
     <HospitalLayout>
       <div className="space-y-6">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <h1 className="text-3xl font-bold tracking-tight">Staff Management</h1>
-          <Button className="bg-health-600 hover:bg-health-700">
+          <Button 
+            className="bg-health-600 hover:bg-health-700"
+            onClick={handleAddStaff}
+          >
             <UserPlus className="mr-2 h-4 w-4" />
             Add New Staff
           </Button>
@@ -80,7 +165,7 @@ const StaffManagement = () => {
               <UserCog className="h-5 w-5 text-blue-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{staffMembers.length}</div>
+              <div className="text-2xl font-bold">{staffData?.length || 0}</div>
               <p className="text-xs text-muted-foreground mt-1">
                 Across all departments
               </p>
@@ -126,7 +211,7 @@ const StaffManagement = () => {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {staffMembers.filter(s => s.status === "On Duty").length}
+                {staffData?.filter(s => s.status === "active").length || 0}
               </div>
               <p className="text-xs text-muted-foreground mt-1">
                 Staff currently working
@@ -165,10 +250,18 @@ const StaffManagement = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredStaff.length > 0 ? (
+                  {isLoading ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center h-24">
+                        <div className="flex justify-center items-center">
+                          <Loader2 className="h-8 w-8 animate-spin text-health-600" />
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ) : filteredStaff.length > 0 ? (
                     filteredStaff.map((staff) => (
                       <TableRow key={staff.id}>
-                        <TableCell className="font-medium">{staff.id}</TableCell>
+                        <TableCell className="font-medium">{staff.id.substring(0, 8)}</TableCell>
                         <TableCell>{staff.name}</TableCell>
                         <TableCell>{staff.role}</TableCell>
                         <TableCell className="hidden md:table-cell">{staff.department}</TableCell>
@@ -176,9 +269,9 @@ const StaffManagement = () => {
                         <TableCell className="hidden md:table-cell">{staff.phone}</TableCell>
                         <TableCell>
                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            staff.status === "On Duty" 
+                            staff.status === "active" 
                               ? "bg-green-100 text-green-800" 
-                              : staff.status === "Off Duty"
+                              : staff.status === "inactive"
                               ? "bg-gray-100 text-gray-800"
                               : "bg-amber-100 text-amber-800"
                           }`}>

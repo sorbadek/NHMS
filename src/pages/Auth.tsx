@@ -1,6 +1,6 @@
 
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/use-toast";
-import { Loader2, LogIn, UserPlus } from "lucide-react";
+import { Loader2, LogIn, UserPlus, Building, ShieldAlert } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 const Auth = () => {
@@ -83,13 +83,14 @@ const Auth = () => {
     try {
       setIsLoading(true);
       
+      // Always register users as patients since all citizens must have a patient account
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
           data: {
             full_name: fullName,
-            user_type: userType,
+            user_type: "patient", // Always register as patient
           }
         }
       });
@@ -97,6 +98,19 @@ const Auth = () => {
       if (error) throw error;
 
       if (data.user) {
+        // Create patient record
+        const { error: patientError } = await supabase
+          .from('patients')
+          .insert([{
+            user_id: data.user.id,
+            status: 'active'
+          }]);
+
+        if (patientError) {
+          console.error("Error creating patient record:", patientError);
+          // Continue anyway, as user was created in auth
+        }
+
         toast({
           title: "Sign up successful!",
           description: "Your account has been created. Please check your email for verification.",
@@ -242,19 +256,6 @@ const Auth = () => {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="user-type">Account Type</Label>
-                      <Select value={userType} onValueChange={setUserType}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select account type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="patient">Patient</SelectItem>
-                          <SelectItem value="hospital_staff">Hospital Staff</SelectItem>
-                          <SelectItem value="police">Police Officer</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
                       <Label htmlFor="register-password">Password</Label>
                       <Input 
                         id="register-password" 
@@ -296,8 +297,29 @@ const Auth = () => {
               </TabsContent>
             </Tabs>
           </CardContent>
-          <CardFooter className="flex flex-col space-y-2">
-            <div className="text-sm text-gray-500 text-center">
+          <CardFooter className="flex flex-col space-y-4">
+            <div className="flex flex-col space-y-2 w-full">
+              <p className="text-sm text-center text-gray-500 mb-2">Are you representing an organization?</p>
+              <div className="flex space-x-2">
+                <Button 
+                  variant="outline" 
+                  className="flex-1"
+                  onClick={() => navigate("/hospital-registration")}
+                >
+                  <Building className="mr-2 h-4 w-4" />
+                  Register Hospital
+                </Button>
+                <Button 
+                  variant="outline" 
+                  className="flex-1"
+                  onClick={() => navigate("/police-registration")}
+                >
+                  <ShieldAlert className="mr-2 h-4 w-4" />
+                  Register Police Dept.
+                </Button>
+              </div>
+            </div>
+            <div className="text-sm text-gray-500 text-center mt-4">
               By signing in, you agree to our Terms of Service and Privacy Policy.
             </div>
           </CardFooter>

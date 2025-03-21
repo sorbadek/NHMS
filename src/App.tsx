@@ -18,6 +18,10 @@ import PatientAppointments from "./pages/PatientAppointments";
 import PatientRecords from "./pages/PatientRecords";
 import PoliceDashboard from "./pages/PoliceDashboard";
 import AccidentReports from "./pages/AccidentReports";
+import HospitalRegistration from "./pages/HospitalRegistration";
+import PoliceRegistration from "./pages/PoliceRegistration";
+import StaffRegistration from "./pages/StaffRegistration";
+import OfficerRegistration from "./pages/OfficerRegistration";
 
 const queryClient = new QueryClient();
 
@@ -50,6 +54,12 @@ const App = () => (
           <Route path="/police-directory" element={<PoliceDashboard />} />
           <Route path="/police-reports" element={<PoliceDashboard />} />
           <Route path="/police-profile" element={<PoliceDashboard />} />
+          
+          {/* Registration routes */}
+          <Route path="/hospital-registration" element={<HospitalRegistration />} />
+          <Route path="/police-registration" element={<PoliceRegistration />} />
+          <Route path="/staff-registration" element={<StaffRegistration />} />
+          <Route path="/officer-registration" element={<OfficerRegistration />} />
           
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
