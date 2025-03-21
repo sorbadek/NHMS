@@ -1,13 +1,14 @@
 
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { LockIcon, UserIcon } from "lucide-react";
+import { LockIcon, UserIcon, Loader2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 const PatientLogin = () => {
   const [isLoading, setIsLoading] = useState(false);
@@ -17,6 +18,53 @@ const PatientLogin = () => {
     rememberMe: false
   });
   const { toast } = useToast();
+  const navigate = useNavigate();
+
+  // Check if user is already logged in
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data } = await supabase.auth.getSession();
+      if (data.session) {
+        redirectBasedOnUserType(data.session.user.id);
+      }
+    };
+
+    checkSession();
+  }, []);
+
+  const redirectBasedOnUserType = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('user_type')
+        .eq('id', userId)
+        .single();
+
+      if (error) throw error;
+
+      if (data) {
+        switch (data.user_type) {
+          case 'admin':
+            navigate('/hospital-dashboard');
+            break;
+          case 'hospital_staff':
+            navigate('/hospital-dashboard');
+            break;
+          case 'police':
+            navigate('/police-dashboard');
+            break;
+          case 'patient':
+            navigate('/patient-dashboard');
+            break;
+          default:
+            navigate('/patient-dashboard');
+        }
+      }
+    } catch (error) {
+      console.error('Error getting user type:', error);
+      navigate('/patient-dashboard');
+    }
+  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -41,25 +89,37 @@ const PatientLogin = () => {
 
     setIsLoading(true);
     
-    // This is where you would integrate with your authentication backend
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Check if identifier is an email or NIN
+      const isEmail = formData.identifier.includes('@');
+      
+      // Sign in using Supabase Auth
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: isEmail ? formData.identifier : `${formData.identifier}@nin.placeholder`, // Handle NIN as email
+        password: formData.password
+      });
+
+      if (error) throw error;
       
       toast({
         title: "Success",
         description: "Login successful! Redirecting to your dashboard...",
       });
       
-      // Here you would typically:
-      // 1. Store the auth token in localStorage/sessionStorage
-      // 2. Update your auth context/state
-      // 3. Redirect to the patient dashboard
+      // Store session if "remember me" is checked
+      if (formData.rememberMe && data.session) {
+        localStorage.setItem('authSession', JSON.stringify(data.session));
+      }
       
-    } catch (error) {
+      // Redirect based on user type
+      if (data.user) {
+        redirectBasedOnUserType(data.user.id);
+      }
+      
+    } catch (error: any) {
       toast({
         title: "Authentication Failed",
-        description: "Invalid credentials. Please try again.",
+        description: error.message || "Invalid credentials. Please try again.",
         variant: "destructive"
       });
     } finally {
@@ -151,7 +211,12 @@ const PatientLogin = () => {
                 className="w-full bg-health-600 hover:bg-health-700"
                 disabled={isLoading}
               >
-                {isLoading ? "Authenticating..." : "Sign in"}
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Authenticating...
+                  </>
+                ) : "Sign in"}
               </Button>
               
               <div className="text-center text-sm">

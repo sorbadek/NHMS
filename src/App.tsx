@@ -7,6 +7,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import PatientLogin from "./pages/PatientLogin";
+import PatientRegister from "./pages/PatientRegister";
 import HospitalDashboard from "./pages/HospitalDashboard";
 import PatientManagement from "./pages/PatientManagement";
 import StaffManagement from "./pages/StaffManagement";
@@ -22,6 +23,11 @@ import HospitalRegistration from "./pages/HospitalRegistration";
 import PoliceRegistration from "./pages/PoliceRegistration";
 import StaffRegistration from "./pages/StaffRegistration";
 import OfficerRegistration from "./pages/OfficerRegistration";
+import Documentation from "./pages/Documentation";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
+import TermsOfService from "./pages/TermsOfService";
+import FAQ from "./pages/FAQ";
+import Support from "./pages/Support";
 
 const queryClient = new QueryClient();
 
@@ -35,6 +41,7 @@ const App = () => (
           <Route path="/" element={<Index />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="/patient-login" element={<PatientLogin />} />
+          <Route path="/patient-register" element={<PatientRegister />} />
           
           {/* Hospital routes */}
           <Route path="/hospital-dashboard" element={<HospitalDashboard />} />
@@ -61,7 +68,14 @@ const App = () => (
           <Route path="/staff-registration" element={<StaffRegistration />} />
           <Route path="/officer-registration" element={<OfficerRegistration />} />
           
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+          {/* Information pages */}
+          <Route path="/documentation" element={<Documentation />} />
+          <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+          <Route path="/terms-of-service" element={<TermsOfService />} />
+          <Route path="/faq" element={<FAQ />} />
+          <Route path="/support" element={<Support />} />
+          
+          {/* Catch-all */}
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
