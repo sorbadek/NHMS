@@ -121,7 +121,7 @@ const ResourceManagement = () => {
         id: resource.id,
         name: resource.name,
         type: resource.type || "",
-        location: resource.location || "", // Add missing field with default value
+        location: "", // Add empty location since it's not in the database
         quantity: resource.quantity || 0,
         status: resource.status || "",
         hospital_id: resource.hospital_id,
@@ -134,9 +134,11 @@ const ResourceManagement = () => {
   // Add resource mutation
   const addResourceMutation = useMutation({
     mutationFn: async (resource: Omit<Resource, 'id' | 'created_at'>) => {
+      const { location, ...resourceForDb } = resource;
+      
       const { data, error } = await supabase
         .from('resources')
-        .insert([resource])
+        .insert([resourceForDb])
         .select();
       
       if (error) throw error;
@@ -163,7 +165,7 @@ const ResourceManagement = () => {
   // Update resource mutation
   const updateResourceMutation = useMutation({
     mutationFn: async (resource: Resource) => {
-      const { id, ...updatedFields } = resource;
+      const { id, location, created_at, ...updatedFields } = resource;
       const { data, error } = await supabase
         .from('resources')
         .update(updatedFields)
