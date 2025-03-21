@@ -27,20 +27,48 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/components/ui/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
+// Define interfaces for joined data
+interface ReporterInfo {
+  full_name: string;
+}
+
+interface HospitalInfo {
+  name: string;
+}
+
+interface PoliceDepartmentInfo {
+  name: string;
+}
+
 // Accident report interface
 interface AccidentReport {
   id: string;
-  report_number: string;
+  report_number: string | null;
+  location: string | null;
+  accident_date: string | null;
+  accident_type: string | null;
+  description: string | null;
+  severity: string | null;
+  reported_by: string | null;
+  hospital_id: string | null;
+  police_department_id: string | null;
+  status: string | null;
+  created_at: string | null;
+  // Joined fields from other tables
+  reporter: ReporterInfo | null;
+  hospital: HospitalInfo | null;
+  police_department: PoliceDepartmentInfo | null;
+}
+
+// New report interface
+interface NewReportForm {
   location: string;
   accident_date: string;
   accident_type: string;
   description: string;
   severity: string;
-  reported_by: string;
-  hospital_id: string;
-  police_department_id: string;
   status: string;
-  created_at: string;
+  hospital_id?: string;
 }
 
 const AccidentReports = () => {
@@ -53,7 +81,7 @@ const AccidentReports = () => {
   const [selectedReport, setSelectedReport] = useState<AccidentReport | null>(null);
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [newReport, setNewReport] = useState({
+  const [newReport, setNewReport] = useState<NewReportForm>({
     location: "",
     accident_date: new Date().toISOString().split('T')[0],
     accident_type: "Vehicle Collision",
@@ -80,7 +108,7 @@ const AccidentReports = () => {
         .order('created_at', { ascending: false });
       
       if (error) throw error;
-      return data || [];
+      return data as AccidentReport[] || [];
     }
   });
 
@@ -116,7 +144,7 @@ const AccidentReports = () => {
 
   // Add new accident report
   const addReportMutation = useMutation({
-    mutationFn: async (reportData: any) => {
+    mutationFn: async (reportData: NewReportForm) => {
       // Get current user
       const { data: sessionData } = await supabase.auth.getSession();
       if (!sessionData.session) throw new Error("User not authenticated");
@@ -204,16 +232,16 @@ const AccidentReports = () => {
   });
 
   // Filter reports based on search and status
-  const filteredReports = accidentReports.filter((report: any) => 
-    (report.location?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-     report.accident_type?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-     report.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-     report.report_number?.toLowerCase().includes(searchTerm.toLowerCase())) &&
+  const filteredReports = accidentReports.filter((report: AccidentReport) => 
+    ((report.location || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+     (report.accident_type || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+     (report.description || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+     (report.report_number || "").toLowerCase().includes(searchTerm.toLowerCase())) &&
     (statusFilter === 'all' || report.status === statusFilter)
   );
 
   // Handle viewing report details
-  const handleViewDetails = (report: any) => {
+  const handleViewDetails = (report: AccidentReport) => {
     setSelectedReport(report);
     setIsDetailDialogOpen(true);
   };
@@ -227,6 +255,14 @@ const AccidentReports = () => {
   // Handle status update
   const handleUpdateStatus = (id: string, status: string) => {
     updateReportStatusMutation.mutate({ id, status });
+  };
+
+  // Handle form field update with hospital_id
+  const handleHospitalChange = (value: string) => {
+    setNewReport(prev => ({
+      ...prev,
+      hospital_id: value || undefined
+    }));
   };
 
   return (
@@ -294,10 +330,10 @@ const AccidentReports = () => {
                   </TableHeader>
                   <TableBody>
                     {filteredReports.length > 0 ? (
-                      filteredReports.map((report: any) => (
+                      filteredReports.map((report: AccidentReport) => (
                         <TableRow key={report.id}>
                           <TableCell className="font-medium">{report.report_number || report.id.substring(0, 8)}</TableCell>
-                          <TableCell>{new Date(report.accident_date || report.created_at).toLocaleDateString()}</TableCell>
+                          <TableCell>{new Date(report.accident_date || report.created_at || "").toLocaleDateString()}</TableCell>
                           <TableCell>{report.accident_type || "Unknown"}</TableCell>
                           <TableCell className="hidden md:table-cell">{report.location || "N/A"}</TableCell>
                           <TableCell className="hidden md:table-cell">
@@ -431,7 +467,7 @@ const AccidentReports = () => {
                 <div className="space-y-2">
                   <Label htmlFor="hospital">Hospital Involved</Label>
                   <Select 
-                    onValueChange={(value) => setNewReport({ ...newReport, hospital_id: value })}
+                    onValueChange={handleHospitalChange}
                   >
                     <SelectTrigger id="hospital">
                       <SelectValue placeholder="Select hospital" />
@@ -485,7 +521,7 @@ const AccidentReports = () => {
                 <div>
                   <h2 className="text-xl font-bold">{selectedReport.report_number || selectedReport.id.substring(0, 8)}</h2>
                   <p className="text-sm text-muted-foreground">
-                    Created: {new Date(selectedReport.created_at).toLocaleString()}
+                    Created: {new Date(selectedReport.created_at || "").toLocaleString()}
                   </p>
                 </div>
                 <span className={`px-3 py-1 rounded-full text-sm font-medium ${
@@ -504,7 +540,7 @@ const AccidentReports = () => {
                     Date of Accident
                   </p>
                   <p className="text-base">
-                    {new Date(selectedReport.accident_date || selectedReport.created_at).toLocaleDateString()}
+                    {new Date(selectedReport.accident_date || selectedReport.created_at || "").toLocaleDateString()}
                   </p>
                 </div>
                 

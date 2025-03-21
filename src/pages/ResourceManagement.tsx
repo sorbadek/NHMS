@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import HospitalLayout from "@/components/HospitalLayout";
@@ -46,9 +45,22 @@ interface Resource {
   location: string;
   quantity: number;
   status: string;
-  hospital_id: string;
+  hospital_id: string | null;
   last_maintenance: string;
   created_at: string;
+}
+
+// Database resource (matches actual database schema)
+interface DbResource {
+  id: string;
+  name: string;
+  type: string | null;
+  quantity: number | null;
+  status: string | null;
+  hospital_id: string | null;
+  last_maintenance: string | null;
+  created_at: string | null;
+  updated_at: string | null;
 }
 
 // New resource form default values
@@ -58,7 +70,8 @@ const defaultResource = {
   location: "",
   quantity: 1,
   status: "Available",
-  last_maintenance: new Date().toISOString().split('T')[0]
+  last_maintenance: new Date().toISOString().split('T')[0],
+  hospital_id: null as string | null
 };
 
 const ResourceManagement = () => {
@@ -102,7 +115,19 @@ const ResourceManagement = () => {
         .select('*');
       
       if (error) throw error;
-      return data as Resource[];
+
+      // Transform the data to match our Resource interface
+      return (data as DbResource[]).map(resource => ({
+        id: resource.id,
+        name: resource.name,
+        type: resource.type || "",
+        location: resource.location || "", // Add missing field with default value
+        quantity: resource.quantity || 0,
+        status: resource.status || "",
+        hospital_id: resource.hospital_id,
+        last_maintenance: resource.last_maintenance || "",
+        created_at: resource.created_at || ""
+      })) as Resource[];
     }
   });
 
@@ -198,7 +223,28 @@ const ResourceManagement = () => {
   // Handle form submissions
   const handleAddResource = (e: React.FormEvent) => {
     e.preventDefault();
-    addResourceMutation.mutate(newResource);
+    // Get current hospital ID from session or use default
+    const getCurrentHospitalId = async () => {
+      const { data } = await supabase.auth.getSession();
+      if (data.session) {
+        const { data: staffData } = await supabase
+          .from('hospital_staff')
+          .select('hospital_id')
+          .eq('user_id', data.session.user.id)
+          .single();
+        
+        return staffData?.hospital_id || null;
+      }
+      return null;
+    };
+
+    getCurrentHospitalId().then(hospitalId => {
+      const resourceToAdd = {
+        ...newResource,
+        hospital_id: hospitalId || newResource.hospital_id
+      };
+      addResourceMutation.mutate(resourceToAdd);
+    });
   };
 
   const handleUpdateResource = (e: React.FormEvent) => {
