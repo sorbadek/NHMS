@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { 
   Card, 
   CardContent, 
@@ -22,46 +22,217 @@ import { Label } from "@/components/ui/label";
 import { Calendar, UserPlus, X, CalendarDays, Clock, Check, Calendar as CalendarIcon } from "lucide-react";
 import PatientLayout from "@/components/PatientLayout";
 import { toast } from "sonner";
-
-// Mock past appointments
-const pastAppointments = [
-  { id: "AP-2023-001", date: "15/05/2023", time: "09:15 AM", doctor: "Dr. James Wilson", hospital: "Central Hospital", department: "General Medicine", status: "Completed", notes: "Follow-up in 3 months." },
-  { id: "AP-2023-002", date: "10/04/2023", time: "11:30 AM", doctor: "Dr. Lisa Chen", hospital: "Community Healthcare", department: "Immunology", status: "Completed", notes: "Vaccinations up to date." },
-  { id: "AP-2023-003", date: "05/03/2023", time: "02:00 PM", doctor: "Dr. Samantha Lee", hospital: "Central Hospital", department: "Cardiology", status: "Cancelled", notes: "Rescheduled for next week." },
-  { id: "AP-2023-004", date: "20/02/2023", time: "10:45 AM", doctor: "Dr. Michael Brown", hospital: "National Medical Center", department: "Radiology", status: "Completed", notes: "No further imaging required." },
-];
-
-// Mock upcoming appointments
-const upcomingAppointments = [
-  { id: "AP-2023-005", date: "20/07/2023", time: "10:30 AM", doctor: "Dr. James Wilson", hospital: "Central Hospital", department: "General Medicine", status: "Confirmed" },
-  { id: "AP-2023-006", date: "05/08/2023", time: "02:15 PM", doctor: "Dr. Samantha Lee", hospital: "Central Hospital", department: "Cardiology", status: "Pending" },
-];
-
-// Mock available hospitals for booking
-const availableHospitals = [
-  { id: "H1", name: "Central Hospital", departments: ["General Medicine", "Cardiology", "Neurology", "Pediatrics", "Orthopedics"] },
-  { id: "H2", name: "Community Healthcare", departments: ["General Medicine", "Immunology", "Dermatology", "ENT"] },
-  { id: "H3", name: "National Medical Center", departments: ["General Medicine", "Radiology", "Oncology", "Urology"] },
-];
+import { supabase } from "@/integrations/supabase/client";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { format } from "date-fns";
 
 const PatientAppointments = () => {
   const [showBookingDialog, setShowBookingDialog] = useState(false);
   const [selectedHospital, setSelectedHospital] = useState("");
   const [selectedDepartment, setSelectedDepartment] = useState("");
+  const [appointmentDate, setAppointmentDate] = useState("");
+  const [appointmentTime, setAppointmentTime] = useState("");
+  const [appointmentReason, setAppointmentReason] = useState("");
+  const queryClient = useQueryClient();
+  
+  // Get current user
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Not authenticated");
+      
+      // Get user profile data
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', session.user.id)
+        .single();
+      
+      if (userError) throw userError;
+      
+      // Get patient data
+      const { data: patientData, error: patientError } = await supabase
+        .from('patients')
+        .select('*')
+        .eq('user_id', session.user.id)
+        .single();
+      
+      if (patientError && patientError.code !== 'PGRST116') {
+        throw patientError;
+      }
+      
+      return { 
+        ...session.user,
+        ...userData,
+        patient: patientData || null
+      };
+    }
+  });
+  
+  // Get available hospitals
+  const { data: availableHospitals = [] } = useQuery({
+    queryKey: ['hospitals'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('hospitals')
+        .select('*')
+        .eq('status', 'active');
+      
+      if (error) throw error;
+      return data || [];
+    }
+  });
+  
+  // Get upcoming appointments
+  const { data: upcomingAppointments = [], isLoading: isLoadingUpcoming } = useQuery({
+    queryKey: ['upcomingAppointments'],
+    queryFn: async () => {
+      if (!currentUser?.patient?.id) return [];
+      
+      const today = new Date().toISOString();
+      
+      const { data, error } = await supabase
+        .from('appointments')
+        .select(`
+          *,
+          hospitals:hospital_id(*),
+          doctors:doctor_id(*)
+        `)
+        .eq('patient_id', currentUser.patient.id)
+        .gte('appointment_date', today)
+        .order('appointment_date', { ascending: true });
+      
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!currentUser?.patient?.id
+  });
+  
+  // Get past appointments
+  const { data: pastAppointments = [], isLoading: isLoadingPast } = useQuery({
+    queryKey: ['pastAppointments'],
+    queryFn: async () => {
+      if (!currentUser?.patient?.id) return [];
+      
+      const today = new Date().toISOString();
+      
+      const { data, error } = await supabase
+        .from('appointments')
+        .select(`
+          *,
+          hospitals:hospital_id(*),
+          doctors:doctor_id(*)
+        `)
+        .eq('patient_id', currentUser.patient.id)
+        .lt('appointment_date', today)
+        .order('appointment_date', { ascending: false });
+      
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!currentUser?.patient?.id
+  });
+  
+  // Book appointment mutation
+  const bookAppointmentMutation = useMutation({
+    mutationFn: async (appointmentData) => {
+      if (!currentUser?.patient?.id) {
+        throw new Error("Patient profile not found");
+      }
+      
+      const { data, error } = await supabase
+        .from('appointments')
+        .insert([{
+          patient_id: currentUser.patient.id,
+          hospital_id: appointmentData.hospitalId,
+          department: appointmentData.department,
+          appointment_date: new Date(`${appointmentData.date}T${appointmentData.time}`).toISOString(),
+          reason: appointmentData.reason,
+          status: 'pending'
+        }]);
+      
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(['upcomingAppointments']);
+      toast.success("Appointment request submitted successfully!");
+      setShowBookingDialog(false);
+      resetForm();
+    },
+    onError: (error) => {
+      toast.error(`Failed to book appointment: ${error.message}`);
+    }
+  });
+  
+  // Cancel appointment mutation
+  const cancelAppointmentMutation = useMutation({
+    mutationFn: async (appointmentId) => {
+      const { data, error } = await supabase
+        .from('appointments')
+        .update({ status: 'cancelled' })
+        .eq('id', appointmentId);
+      
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(['upcomingAppointments']);
+      toast.success("Appointment cancelled successfully!");
+    },
+    onError: (error) => {
+      toast.error(`Failed to cancel appointment: ${error.message}`);
+    }
+  });
   
   const handleBookAppointment = () => {
-    // In a real app, this would send the booking request to the server
-    toast.success("Appointment request submitted successfully!");
-    setShowBookingDialog(false);
+    if (!selectedHospital || !selectedDepartment || !appointmentDate || !appointmentTime) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
     
-    // Reset form
+    bookAppointmentMutation.mutate({
+      hospitalId: selectedHospital,
+      department: selectedDepartment,
+      date: appointmentDate,
+      time: appointmentTime,
+      reason: appointmentReason
+    });
+  };
+  
+  const handleCancelAppointment = (appointmentId) => {
+    if (confirm("Are you sure you want to cancel this appointment?")) {
+      cancelAppointmentMutation.mutate(appointmentId);
+    }
+  };
+  
+  const resetForm = () => {
     setSelectedHospital("");
     setSelectedDepartment("");
+    setAppointmentDate("");
+    setAppointmentTime("");
+    setAppointmentReason("");
   };
-
-  const handleCancelAppointment = (appointmentId: string) => {
-    // In a real app, this would send a cancellation request to the server
-    toast.success("Appointment cancelled successfully!");
+  
+  // Format date for display
+  const formatDate = (dateString) => {
+    try {
+      const date = new Date(dateString);
+      return format(date, 'dd/MM/yyyy');
+    } catch (error) {
+      return dateString;
+    }
+  };
+  
+  // Format time for display
+  const formatTime = (dateString) => {
+    try {
+      const date = new Date(dateString);
+      return format(date, 'hh:mm a');
+    } catch (error) {
+      return '';
+    }
   };
 
   return (
@@ -90,7 +261,11 @@ const PatientAppointments = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {upcomingAppointments.length > 0 ? (
+            {isLoadingUpcoming ? (
+              <div className="flex justify-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+              </div>
+            ) : upcomingAppointments.length > 0 ? (
               <div className="rounded-md border">
                 <Table>
                   <TableHeader>
@@ -107,19 +282,21 @@ const PatientAppointments = () => {
                     {upcomingAppointments.map((appointment) => (
                       <TableRow key={appointment.id}>
                         <TableCell>
-                          <div className="font-medium">{appointment.date}</div>
-                          <div className="text-sm text-muted-foreground">{appointment.time}</div>
+                          <div className="font-medium">{formatDate(appointment.appointment_date)}</div>
+                          <div className="text-sm text-muted-foreground">{formatTime(appointment.appointment_date)}</div>
                         </TableCell>
-                        <TableCell>{appointment.doctor}</TableCell>
-                        <TableCell>{appointment.hospital}</TableCell>
+                        <TableCell>{appointment.doctors?.full_name || 'Not assigned'}</TableCell>
+                        <TableCell>{appointment.hospitals?.name || 'Unknown'}</TableCell>
                         <TableCell className="hidden md:table-cell">{appointment.department}</TableCell>
                         <TableCell>
                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            appointment.status === "Confirmed" 
+                            appointment.status === "confirmed" 
                               ? "bg-green-100 text-green-800" 
-                              : "bg-yellow-100 text-yellow-800"
+                              : appointment.status === "pending"
+                              ? "bg-yellow-100 text-yellow-800"
+                              : "bg-gray-100 text-gray-800"
                           }`}>
-                            {appointment.status}
+                            {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)}
                           </span>
                         </TableCell>
                         <TableCell className="text-right">
@@ -129,6 +306,7 @@ const PatientAppointments = () => {
                               size="sm"
                               className="text-red-500 hover:text-red-700"
                               onClick={() => handleCancelAppointment(appointment.id)}
+                              disabled={appointment.status === 'cancelled'}
                             >
                               <X className="h-4 w-4 mr-1" />
                               Cancel
@@ -169,45 +347,57 @@ const PatientAppointments = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date & Time</TableHead>
-                    <TableHead>Doctor</TableHead>
-                    <TableHead className="hidden md:table-cell">Hospital</TableHead>
-                    <TableHead className="hidden md:table-cell">Department</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="hidden md:table-cell">Notes</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {pastAppointments.map((appointment) => (
-                    <TableRow key={appointment.id}>
-                      <TableCell>
-                        <div className="font-medium">{appointment.date}</div>
-                        <div className="text-sm text-muted-foreground">{appointment.time}</div>
-                      </TableCell>
-                      <TableCell>{appointment.doctor}</TableCell>
-                      <TableCell className="hidden md:table-cell">{appointment.hospital}</TableCell>
-                      <TableCell className="hidden md:table-cell">{appointment.department}</TableCell>
-                      <TableCell>
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          appointment.status === "Completed" 
-                            ? "bg-green-100 text-green-800" 
-                            : appointment.status === "Cancelled"
-                            ? "bg-red-100 text-red-800"
-                            : "bg-gray-100 text-gray-800"
-                        }`}>
-                          {appointment.status}
-                        </span>
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell">{appointment.notes}</TableCell>
+            {isLoadingPast ? (
+              <div className="flex justify-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+              </div>
+            ) : pastAppointments.length > 0 ? (
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date & Time</TableHead>
+                      <TableHead>Doctor</TableHead>
+                      <TableHead className="hidden md:table-cell">Hospital</TableHead>
+                      <TableHead className="hidden md:table-cell">Department</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="hidden md:table-cell">Notes</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                  </TableHeader>
+                  <TableBody>
+                    {pastAppointments.map((appointment) => (
+                      <TableRow key={appointment.id}>
+                        <TableCell>
+                          <div className="font-medium">{formatDate(appointment.appointment_date)}</div>
+                          <div className="text-sm text-muted-foreground">{formatTime(appointment.appointment_date)}</div>
+                        </TableCell>
+                        <TableCell>{appointment.doctors?.full_name || 'Not assigned'}</TableCell>
+                        <TableCell className="hidden md:table-cell">{appointment.hospitals?.name || 'Unknown'}</TableCell>
+                        <TableCell className="hidden md:table-cell">{appointment.department}</TableCell>
+                        <TableCell>
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            appointment.status === "completed" 
+                              ? "bg-green-100 text-green-800" 
+                              : appointment.status === "cancelled"
+                              ? "bg-red-100 text-red-800"
+                              : "bg-gray-100 text-gray-800"
+                          }`}>
+                            {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)}
+                          </span>
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell">{appointment.notes || 'No notes available'}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <CalendarIcon className="mx-auto h-12 w-12 text-gray-400" />
+                <h3 className="mt-2 text-sm font-semibold text-gray-900">No past appointments</h3>
+                <p className="mt-1 text-sm text-gray-500">Your appointment history will appear here.</p>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -251,9 +441,14 @@ const PatientAppointments = () => {
                   disabled={!selectedHospital}
                 >
                   <option value="">Select a department</option>
-                  {selectedHospital && availableHospitals.find(h => h.id === selectedHospital)?.departments.map(department => (
-                    <option key={department} value={department}>{department}</option>
-                  ))}
+                  <option value="General Medicine">General Medicine</option>
+                  <option value="Cardiology">Cardiology</option>
+                  <option value="Neurology">Neurology</option>
+                  <option value="Pediatrics">Pediatrics</option>
+                  <option value="Orthopedics">Orthopedics</option>
+                  <option value="Dermatology">Dermatology</option>
+                  <option value="Oncology">Oncology</option>
+                  <option value="Gynecology">Gynecology</option>
                 </select>
               </div>
               
@@ -266,6 +461,8 @@ const PatientAppointments = () => {
                   type="date"
                   min={new Date().toISOString().split('T')[0]}
                   className="col-span-3"
+                  value={appointmentDate}
+                  onChange={(e) => setAppointmentDate(e.target.value)}
                 />
               </div>
               
@@ -277,6 +474,8 @@ const PatientAppointments = () => {
                   id="time"
                   type="time"
                   className="col-span-3"
+                  value={appointmentTime}
+                  onChange={(e) => setAppointmentTime(e.target.value)}
                 />
               </div>
               
@@ -288,6 +487,8 @@ const PatientAppointments = () => {
                   id="reason"
                   className="col-span-3 min-h-[80px] flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                   placeholder="Briefly describe your reason for the appointment"
+                  value={appointmentReason}
+                  onChange={(e) => setAppointmentReason(e.target.value)}
                 />
               </div>
             </div>
@@ -296,9 +497,21 @@ const PatientAppointments = () => {
               <Button variant="outline" onClick={() => setShowBookingDialog(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleBookAppointment}>
-                <UserPlus className="mr-2 h-4 w-4" />
-                Request Appointment
+              <Button 
+                onClick={handleBookAppointment}
+                disabled={bookAppointmentMutation.isPending}
+              >
+                {bookAppointmentMutation.isPending ? (
+                  <>
+                    <div className="animate-spin mr-2 h-4 w-4 border-2 border-b-transparent rounded-full"></div>
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    <UserPlus className="mr-2 h-4 w-4" />
+                    Request Appointment
+                  </>
+                )}
               </Button>
             </DialogFooter>
           </DialogContent>

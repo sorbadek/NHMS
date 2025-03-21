@@ -50,7 +50,7 @@ const Navbar = () => {
             <a href="#benefits" className="nav-link">Benefits</a>
             <a href="#implementation" className="nav-link">Implementation</a>
             <a href="#contact" className="nav-link">Contact</a>
-            <Link to="/patient-login">
+            <Link to="/auth">
               <Button variant="outline" className="border-health-600 text-health-600 hover:bg-health-50">
                 Login
               </Button>
@@ -75,7 +75,7 @@ const Navbar = () => {
               <a href="#benefits" className="nav-link py-2" onClick={toggleMobileMenu}>Benefits</a>
               <a href="#implementation" className="nav-link py-2" onClick={toggleMobileMenu}>Implementation</a>
               <a href="#contact" className="nav-link py-2" onClick={toggleMobileMenu}>Contact</a>
-              <Link to="/patient-login" onClick={toggleMobileMenu}>
+              <Link to="/auth" onClick={toggleMobileMenu}>
                 <Button variant="outline" className="w-full border-health-600 text-health-600 hover:bg-health-50">
                   Login
                 </Button>

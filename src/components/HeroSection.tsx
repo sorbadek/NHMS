@@ -25,7 +25,7 @@ const HeroSection = ({ onDemoClick, onLearnMoreClick }: HeroSectionProps) => {
                 className="bg-health-600 hover:bg-health-700"
                 asChild
               >
-                <Link to="/patient-login">Get Started</Link>
+                <Link to="/auth">Patients? Register or Login here</Link>
               </Button>
               <Button
                 size="lg"
