@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
+import Auth from "./pages/Auth";
 import PatientLogin from "./pages/PatientLogin";
 import HospitalDashboard from "./pages/HospitalDashboard";
 import PatientManagement from "./pages/PatientManagement";
@@ -15,6 +16,8 @@ import NotFound from "./pages/NotFound";
 import PatientDashboard from "./pages/PatientDashboard";
 import PatientAppointments from "./pages/PatientAppointments";
 import PatientRecords from "./pages/PatientRecords";
+import PoliceDashboard from "./pages/PoliceDashboard";
+import AccidentReports from "./pages/AccidentReports";
 
 const queryClient = new QueryClient();
 
@@ -26,6 +29,7 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Index />} />
+          <Route path="/auth" element={<Auth />} />
           <Route path="/patient-login" element={<PatientLogin />} />
           
           {/* Hospital routes */}
@@ -39,6 +43,13 @@ const App = () => (
           <Route path="/patient-dashboard" element={<PatientDashboard />} />
           <Route path="/patient-appointments" element={<PatientAppointments />} />
           <Route path="/patient-records" element={<PatientRecords />} />
+          
+          {/* Police routes */}
+          <Route path="/police-dashboard" element={<PoliceDashboard />} />
+          <Route path="/accident-reports" element={<AccidentReports />} />
+          <Route path="/police-directory" element={<PoliceDashboard />} />
+          <Route path="/police-reports" element={<PoliceDashboard />} />
+          <Route path="/police-profile" element={<PoliceDashboard />} />
           
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
