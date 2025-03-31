@@ -9,10 +9,25 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/components/ui/use-toast";
 import { Loader2, UserPlus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface Hospital {
   id: string;
   name: string;
+}
+
+// Define detailed role types
+interface RoleOption {
+  id: string;
+  label: string;
+  category: string;
+}
+
+// Define department types
+interface DepartmentOption {
+  id: string;
+  label: string;
+  category: string;
 }
 
 const StaffRegistration = () => {
@@ -20,6 +35,7 @@ const StaffRegistration = () => {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [hospitals, setHospitals] = useState<Hospital[]>([]);
+  const [roleCategory, setRoleCategory] = useState("medical");
   const [formData, setFormData] = useState({
     email: "",
     fullName: "",
@@ -27,12 +43,79 @@ const StaffRegistration = () => {
     confirmPassword: "",
     role: "doctor",
     department: "",
-    hospitalId: ""
+    hospitalId: "",
+    specialization: "",
+    licenseNumber: ""
   });
+
+  // Define roles by category
+  const roles: RoleOption[] = [
+    // Medical staff
+    { id: "doctor", label: "Doctor", category: "medical" },
+    { id: "nurse", label: "Nurse", category: "medical" },
+    { id: "midwife", label: "Midwife", category: "medical" },
+    { id: "paramedic", label: "Paramedic", category: "medical" },
+    { id: "pharmacist", label: "Pharmacist", category: "medical" },
+    { id: "lab_technician", label: "Lab Technician", category: "medical" },
+    { id: "radiologist", label: "Radiologist", category: "medical" },
+    
+    // Administrative staff
+    { id: "administrator", label: "Administrator", category: "administrative" },
+    { id: "receptionist", label: "Receptionist", category: "administrative" },
+    { id: "billing_specialist", label: "Billing Specialist", category: "administrative" },
+    { id: "medical_records", label: "Medical Records Officer", category: "administrative" },
+    { id: "hr_manager", label: "HR Manager", category: "administrative" },
+    
+    // Support staff
+    { id: "security", label: "Security Officer", category: "support" },
+    { id: "maintenance", label: "Maintenance Staff", category: "support" },
+    { id: "cleaner", label: "Cleaner", category: "support" },
+    { id: "driver", label: "Ambulance Driver", category: "support" },
+    { id: "it_support", label: "IT Support", category: "support" }
+  ];
+
+  // Define departments
+  const departments: DepartmentOption[] = [
+    { id: "general_medicine", label: "General Medicine", category: "medical" },
+    { id: "surgery", label: "Surgery", category: "medical" },
+    { id: "pediatrics", label: "Pediatrics", category: "medical" },
+    { id: "obstetrics", label: "Obstetrics & Gynecology", category: "medical" },
+    { id: "cardiology", label: "Cardiology", category: "medical" },
+    { id: "neurology", label: "Neurology", category: "medical" },
+    { id: "orthopedics", label: "Orthopedics", category: "medical" },
+    { id: "ophthalmology", label: "Ophthalmology", category: "medical" },
+    { id: "dermatology", label: "Dermatology", category: "medical" },
+    { id: "psychiatry", label: "Psychiatry", category: "medical" },
+    { id: "radiology", label: "Radiology", category: "medical" },
+    { id: "emergency", label: "Emergency", category: "medical" },
+    { id: "icu", label: "Intensive Care Unit", category: "medical" },
+    { id: "pharmacy", label: "Pharmacy", category: "medical" },
+    { id: "laboratory", label: "Laboratory", category: "medical" },
+    
+    { id: "administration", label: "Administration", category: "administrative" },
+    { id: "finance", label: "Finance & Billing", category: "administrative" },
+    { id: "reception", label: "Reception", category: "administrative" },
+    { id: "medical_records", label: "Medical Records", category: "administrative" },
+    { id: "human_resources", label: "Human Resources", category: "administrative" },
+    
+    { id: "security", label: "Security", category: "support" },
+    { id: "maintenance", label: "Maintenance", category: "support" },
+    { id: "cleaning", label: "Cleaning", category: "support" },
+    { id: "transport", label: "Transport", category: "support" },
+    { id: "it", label: "IT Support", category: "support" }
+  ];
 
   useEffect(() => {
     fetchHospitals();
-  }, []);
+    
+    // Set default role based on category
+    const defaultRole = roles.find(role => role.category === roleCategory)?.id || "";
+    setFormData(prev => ({ ...prev, role: defaultRole }));
+    
+    // Set default department based on category
+    const defaultDepartment = departments.find(dept => dept.category === roleCategory)?.id || "";
+    setFormData(prev => ({ ...prev, department: defaultDepartment }));
+  }, [roleCategory]);
 
   const fetchHospitals = async () => {
     try {
@@ -117,7 +200,7 @@ const StaffRegistration = () => {
           options: {
             data: {
               full_name: formData.fullName,
-              user_type: "patient", // Default type, will be updated later
+              user_type: "hospital_staff", // Set directly to hospital_staff
             }
           }
         });
@@ -129,19 +212,6 @@ const StaffRegistration = () => {
         }
         
         userId = authData.user.id;
-        
-        // Create patient record for new user
-        const { error: patientError } = await supabase
-          .from('patients')
-          .insert([{
-            user_id: userId,
-            status: 'active'
-          }]);
-
-        if (patientError) {
-          console.error("Error creating patient record:", patientError);
-          // Continue anyway, as user was created
-        }
       }
 
       // Update user type to hospital_staff
@@ -152,7 +222,7 @@ const StaffRegistration = () => {
 
       if (updateUserError) throw updateUserError;
 
-      // Create hospital staff record
+      // Create hospital staff record with additional fields
       const { error: staffError } = await supabase
         .from('hospital_staff')
         .insert([{
@@ -160,10 +230,15 @@ const StaffRegistration = () => {
           hospital_id: formData.hospitalId,
           role: formData.role,
           department: formData.department,
-          status: 'active'
+          status: 'active',
+          specialization: formData.specialization,
+          license_number: formData.licenseNumber
         }]);
 
       if (staffError) throw staffError;
+
+      // Send email notification (will implement later)
+      // ...
 
       toast({
         title: "Staff registered successfully",
@@ -186,7 +261,7 @@ const StaffRegistration = () => {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <div className="flex-1 flex items-center justify-center p-4">
-        <Card className="w-full max-w-md shadow-lg">
+        <Card className="w-full max-w-lg shadow-lg">
           <CardHeader className="space-y-1 text-center">
             <CardTitle className="text-2xl font-bold">Register Hospital Staff</CardTitle>
             <CardDescription>
@@ -240,38 +315,185 @@ const StaffRegistration = () => {
                 />
               </div>
               
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="role">Role*</Label>
-                  <Select 
-                    value={formData.role} 
-                    onValueChange={(value) => handleSelectChange('role', value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select Role" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="doctor">Doctor</SelectItem>
-                      <SelectItem value="nurse">Nurse</SelectItem>
-                      <SelectItem value="lab_technician">Lab Technician</SelectItem>
-                      <SelectItem value="pharmacist">Pharmacist</SelectItem>
-                      <SelectItem value="administrator">Administrator</SelectItem>
-                      <SelectItem value="receptionist">Receptionist</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+              <Tabs 
+                value={roleCategory} 
+                onValueChange={setRoleCategory} 
+                className="w-full"
+              >
+                <TabsList className="grid w-full grid-cols-3">
+                  <TabsTrigger value="medical">Medical</TabsTrigger>
+                  <TabsTrigger value="administrative">Administrative</TabsTrigger>
+                  <TabsTrigger value="support">Support</TabsTrigger>
+                </TabsList>
                 
-                <div className="space-y-2">
-                  <Label htmlFor="department">Department</Label>
-                  <Input 
-                    id="department" 
-                    name="department" 
-                    placeholder="Cardiology" 
-                    value={formData.department}
-                    onChange={handleChange}
-                  />
-                </div>
-              </div>
+                <TabsContent value="medical" className="space-y-4 pt-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="role">Role*</Label>
+                      <Select 
+                        value={formData.role} 
+                        onValueChange={(value) => handleSelectChange('role', value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select Role" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {roles
+                            .filter(role => role.category === 'medical')
+                            .map(role => (
+                              <SelectItem key={role.id} value={role.id}>
+                                {role.label}
+                              </SelectItem>
+                            ))
+                          }
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="department">Department*</Label>
+                      <Select 
+                        value={formData.department} 
+                        onValueChange={(value) => handleSelectChange('department', value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select Department" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {departments
+                            .filter(dept => dept.category === 'medical')
+                            .map(dept => (
+                              <SelectItem key={dept.id} value={dept.id}>
+                                {dept.label}
+                              </SelectItem>
+                            ))
+                          }
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="specialization">Specialization</Label>
+                      <Input 
+                        id="specialization" 
+                        name="specialization" 
+                        placeholder="Cardiology, Pediatrics, etc." 
+                        value={formData.specialization}
+                        onChange={handleChange}
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="licenseNumber">License Number</Label>
+                      <Input 
+                        id="licenseNumber" 
+                        name="licenseNumber" 
+                        placeholder="MC-12345" 
+                        value={formData.licenseNumber}
+                        onChange={handleChange}
+                      />
+                    </div>
+                  </div>
+                </TabsContent>
+                
+                <TabsContent value="administrative" className="space-y-4 pt-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="role">Role*</Label>
+                      <Select 
+                        value={formData.role} 
+                        onValueChange={(value) => handleSelectChange('role', value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select Role" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {roles
+                            .filter(role => role.category === 'administrative')
+                            .map(role => (
+                              <SelectItem key={role.id} value={role.id}>
+                                {role.label}
+                              </SelectItem>
+                            ))
+                          }
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="department">Department*</Label>
+                      <Select 
+                        value={formData.department} 
+                        onValueChange={(value) => handleSelectChange('department', value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select Department" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {departments
+                            .filter(dept => dept.category === 'administrative')
+                            .map(dept => (
+                              <SelectItem key={dept.id} value={dept.id}>
+                                {dept.label}
+                              </SelectItem>
+                            ))
+                          }
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </TabsContent>
+                
+                <TabsContent value="support" className="space-y-4 pt-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="role">Role*</Label>
+                      <Select 
+                        value={formData.role} 
+                        onValueChange={(value) => handleSelectChange('role', value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select Role" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {roles
+                            .filter(role => role.category === 'support')
+                            .map(role => (
+                              <SelectItem key={role.id} value={role.id}>
+                                {role.label}
+                              </SelectItem>
+                            ))
+                          }
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="department">Department*</Label>
+                      <Select 
+                        value={formData.department} 
+                        onValueChange={(value) => handleSelectChange('department', value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select Department" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {departments
+                            .filter(dept => dept.category === 'support')
+                            .map(dept => (
+                              <SelectItem key={dept.id} value={dept.id}>
+                                {dept.label}
+                              </SelectItem>
+                            ))
+                          }
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </TabsContent>
+              </Tabs>
               
               <div className="space-y-2">
                 <Label htmlFor="password">Password*</Label>

@@ -8,8 +8,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/use-toast";
-import { Loader2, LogIn, UserPlus, Building, ShieldAlert } from "lucide-react";
+import { Loader2, LogIn, UserPlus, Building, ShieldAlert, Lock } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 const Auth = () => {
   const navigate = useNavigate();
@@ -21,6 +22,9 @@ const Auth = () => {
   const [userType, setUserType] = useState("patient");
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("login");
+  const [adminKey, setAdminKey] = useState("");
+  const [adminKeyDialogOpen, setAdminKeyDialogOpen] = useState(false);
+  const [adminKeyTarget, setAdminKeyTarget] = useState("");
 
   useEffect(() => {
     // Check if user is already logged in
@@ -47,7 +51,7 @@ const Auth = () => {
       if (data) {
         switch (data.user_type) {
           case 'admin':
-            navigate('/hospital-dashboard');
+            navigate('/admin-dashboard');
             break;
           case 'hospital_staff':
             navigate('/hospital-dashboard');
@@ -159,6 +163,29 @@ const Auth = () => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleAdminKeySubmit = () => {
+    // Verify the admin key
+    if (adminKey === "Mich_NHMS") {
+      setAdminKeyDialogOpen(false);
+      if (adminKeyTarget === "hospital") {
+        navigate("/hospital-registration");
+      } else if (adminKeyTarget === "police") {
+        navigate("/police-registration");
+      }
+    } else {
+      toast({
+        title: "Invalid admin key",
+        description: "The admin key you entered is incorrect",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleOrganizationRegistration = (type: string) => {
+    setAdminKeyTarget(type);
+    setAdminKeyDialogOpen(true);
   };
 
   return (
@@ -299,23 +326,15 @@ const Auth = () => {
           </CardContent>
           <CardFooter className="flex flex-col space-y-4">
             <div className="flex flex-col space-y-2 w-full">
-              <p className="text-sm text-center text-gray-500 mb-2">Are you representing an organization?</p>
-              <div className="flex space-x-2">
+              <p className="text-sm text-center text-gray-500 mb-2">Are you an administrator?</p>
+              <div className="flex justify-center">
                 <Button 
                   variant="outline" 
-                  className="flex-1"
-                  onClick={() => navigate("/hospital-registration")}
+                  className="flex items-center"
+                  onClick={() => setAdminKeyDialogOpen(true)}
                 >
-                  <Building className="mr-2 h-4 w-4" />
-                  Register Hospital
-                </Button>
-                <Button 
-                  variant="outline" 
-                  className="flex-1"
-                  onClick={() => navigate("/police-registration")}
-                >
-                  <ShieldAlert className="mr-2 h-4 w-4" />
-                  Register Police Dept.
+                  <Lock className="mr-2 h-4 w-4" />
+                  Admin Access
                 </Button>
               </div>
             </div>
@@ -325,6 +344,32 @@ const Auth = () => {
           </CardFooter>
         </Card>
       </div>
+
+      {/* Admin Key Dialog */}
+      <Dialog open={adminKeyDialogOpen} onOpenChange={setAdminKeyDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Administrator Authentication</DialogTitle>
+            <DialogDescription>
+              Please enter the administrator key to access restricted registration options.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Label htmlFor="admin-key">Admin Key</Label>
+            <Input 
+              id="admin-key" 
+              type="password"
+              value={adminKey}
+              onChange={(e) => setAdminKey(e.target.value)}
+              className="mt-2"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAdminKeyDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleAdminKeySubmit}>Submit</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
