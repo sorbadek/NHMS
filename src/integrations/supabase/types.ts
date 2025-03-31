@@ -127,6 +127,70 @@ export type Database = {
           },
         ]
       }
+      appointments: {
+        Row: {
+          appointment_date: string
+          created_at: string | null
+          department: string | null
+          doctor_id: string | null
+          hospital_id: string | null
+          id: string
+          notes: string | null
+          patient_id: string | null
+          reason: string | null
+          status: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          appointment_date: string
+          created_at?: string | null
+          department?: string | null
+          doctor_id?: string | null
+          hospital_id?: string | null
+          id?: string
+          notes?: string | null
+          patient_id?: string | null
+          reason?: string | null
+          status?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          appointment_date?: string
+          created_at?: string | null
+          department?: string | null
+          doctor_id?: string | null
+          hospital_id?: string | null
+          id?: string
+          notes?: string | null
+          patient_id?: string | null
+          reason?: string | null
+          status?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "appointments_doctor_id_fkey"
+            columns: ["doctor_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointments_hospital_id_fkey"
+            columns: ["hospital_id"]
+            isOneToOne: false
+            referencedRelation: "hospitals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointments_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       hospital_staff: {
         Row: {
           created_at: string | null

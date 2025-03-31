@@ -1,479 +1,531 @@
 
 import { useState, useEffect } from "react";
-import HospitalLayout from "@/components/HospitalLayout";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { 
-  Activity, 
-  Users, 
-  Bed, 
-  UserCheck, 
-  Clock, 
-  AlertCircle, 
-  Loader2
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
+} from "recharts";
+import {
+  Calendar,
+  Users,
+  Bed,
+  Activity,
+  FileText,
+  User,
+  BadgeAlert,
+  RefreshCw,
+  HardDrive,
+  CheckCircle2,
+  ClipboardList,
 } from "lucide-react";
+import HospitalLayout from "@/components/HospitalLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { format } from "date-fns";
 
 const HospitalDashboard = () => {
-  // Get current hospital staff info
-  const { 
-    data: staffInfo,
-    isLoading: isLoadingStaffInfo 
-  } = useQuery({
-    queryKey: ['currentHospitalStaff'],
+  const [selectedTimeframe, setSelectedTimeframe] = useState("week");
+  
+  // Get current hospital
+  const { data: currentHospitalId } = useQuery({
+    queryKey: ['currentHospitalId'],
     queryFn: async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Not authenticated");
       
-      // Get user profile data
-      const { data: userData, error: userError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', session.user.id)
-        .single();
-      
-      if (userError) throw userError;
-      
-      // Get staff data
+      // Get hospital staff record for current user
       const { data: staffData, error: staffError } = await supabase
         .from('hospital_staff')
-        .select('*, hospitals(*)')
+        .select('hospital_id')
         .eq('user_id', session.user.id)
         .single();
       
       if (staffError) throw staffError;
-      
-      return {
-        ...userData,
-        ...staffData
-      };
+      return staffData.hospital_id;
     }
   });
   
-  // Get hospital stats
-  const { 
-    data: hospitalStats,
-    isLoading: isLoadingStats 
-  } = useQuery({
-    queryKey: ['hospitalStats', staffInfo?.hospital_id],
+  // Get hospital resources
+  const { data: resources = [] } = useQuery({
+    queryKey: ['hospitalResources', currentHospitalId],
     queryFn: async () => {
-      if (!staffInfo?.hospital_id) throw new Error("Hospital not found");
+      if (!currentHospitalId) return [];
       
-      // Get total patients
-      const { count: totalPatients, error: patientsError } = await supabase
-        .from('medical_records')
-        .select('patient_id', { count: 'exact', head: true })
-        .eq('hospital_id', staffInfo.hospital_id)
-        .is('discharge_date', null);
-      
-      if (patientsError) throw patientsError;
-      
-      // Get beds info
-      const { data: bedsData, error: bedsError } = await supabase
+      const { data, error } = await supabase
         .from('resources')
         .select('*')
-        .eq('hospital_id', staffInfo.hospital_id)
-        .eq('type', 'bed')
-        .single();
+        .eq('hospital_id', currentHospitalId);
       
-      const totalBeds = bedsData?.quantity || 100;
-      const availableBeds = bedsData?.available || (totalBeds - (totalPatients || 0));
-      
-      if (bedsError && bedsError.code !== 'PGRST116') throw bedsError;
-      
-      // Get total staff
-      const { count: totalStaff, error: staffError } = await supabase
-        .from('hospital_staff')
-        .select('id', { count: 'exact', head: true })
-        .eq('hospital_id', staffInfo.hospital_id)
-        .eq('status', 'active');
-      
-      if (staffError) throw staffError;
-      
-      // Get critical cases
-      const { count: criticalCases, error: criticalError } = await supabase
-        .from('medical_records')
-        .select('id', { count: 'exact', head: true })
-        .eq('hospital_id', staffInfo.hospital_id)
-        .eq('severity', 'critical')
-        .is('discharge_date', null);
-      
-      if (criticalError) throw criticalError;
-      
-      return {
-        totalPatients: totalPatients || 0,
-        availableBeds: `${availableBeds}/${totalBeds}`,
-        totalStaff: totalStaff || 0,
-        criticalCases: criticalCases || 0
-      };
+      if (error) throw error;
+      return data || [];
     },
-    enabled: !!staffInfo?.hospital_id
+    enabled: !!currentHospitalId
   });
   
-  // Get recent patients
-  const { 
-    data: recentPatients = [],
-    isLoading: isLoadingPatients 
-  } = useQuery({
-    queryKey: ['recentPatients', staffInfo?.hospital_id],
+  // Get total beds and available beds
+  const totalBeds = resources
+    .filter(resource => resource.type === 'bed')
+    .reduce((sum, bed) => sum + (bed.quantity || 0), 0);
+  
+  const availableBeds = resources
+    .filter(resource => resource.type === 'bed' && resource.status === 'available')
+    .reduce((sum, bed) => sum + (bed.quantity || 0), 0);
+  
+  // Get registered patients
+  const { data: registeredPatients = [] } = useQuery({
+    queryKey: ['registeredPatients', currentHospitalId],
     queryFn: async () => {
-      if (!staffInfo?.hospital_id) return [];
+      if (!currentHospitalId) return [];
+      
+      // Get unique patients that have had appointments at this hospital
+      const { data, error } = await supabase
+        .from('appointments')
+        .select('patient_id')
+        .eq('hospital_id', currentHospitalId)
+        .is('patient_id', 'not.null');
+      
+      if (error) throw error;
+      
+      // Get unique patient IDs
+      const uniquePatientIds = [...new Set(data.map(record => record.patient_id))];
+      return uniquePatientIds || [];
+    },
+    enabled: !!currentHospitalId
+  });
+  
+  // Get recent medical records
+  const { data: recentMedicalRecords = [] } = useQuery({
+    queryKey: ['recentMedicalRecords', currentHospitalId],
+    queryFn: async () => {
+      if (!currentHospitalId) return [];
       
       const { data, error } = await supabase
         .from('medical_records')
-        .select(`
-          id,
-          record_date,
-          severity,
-          record_type,
-          diagnosis,
-          patients:patient_id(*)
-        `)
-        .eq('hospital_id', staffInfo.hospital_id)
+        .select('*')
+        .eq('hospital_id', currentHospitalId)
         .order('record_date', { ascending: false })
         .limit(5);
       
       if (error) throw error;
-      
-      return data.map(record => ({
-        id: record.id,
-        name: record.patients?.full_name || 'Unknown',
-        status: record.severity || (record.record_type === 'admission' ? 'Admitted' : 'Outpatient'),
-        time: new Date(record.record_date).toLocaleString(),
-        department: record.diagnosis || 'General'
-      }));
+      return data || [];
     },
-    enabled: !!staffInfo?.hospital_id
+    enabled: !!currentHospitalId
   });
   
-  // Get today's appointments
-  const { 
-    data: appointmentsToday = [],
-    isLoading: isLoadingAppointments 
-  } = useQuery({
-    queryKey: ['todayAppointments', staffInfo?.hospital_id],
+  // Get upcoming appointments
+  const { data: upcomingAppointments = [] } = useQuery({
+    queryKey: ['upcomingHospitalAppointments', currentHospitalId],
     queryFn: async () => {
-      if (!staffInfo?.hospital_id) return [];
+      if (!currentHospitalId) return [];
       
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
+      const today = new Date().toISOString();
       
-      const { data, error } = await supabase
-        .from('appointments')
-        .select(`
-          id,
-          appointment_date,
-          department,
-          status,
-          patients:patient_id(*),
-          doctors:doctor_id(*)
-        `)
-        .eq('hospital_id', staffInfo.hospital_id)
-        .gte('appointment_date', today.toISOString())
-        .lt('appointment_date', tomorrow.toISOString())
-        .order('appointment_date');
+      try {
+        const { data, error } = await supabase
+          .from('appointments')
+          .select(`
+            *,
+            patients:patient_id(*),
+            doctors:doctor_id(*)
+          `)
+          .eq('hospital_id', currentHospitalId)
+          .gte('appointment_date', today)
+          .order('appointment_date', { ascending: true })
+          .limit(5);
+        
+        if (error) throw error;
+        return data || [];
+      } catch (err) {
+        console.error("Error fetching hospital appointments:", err);
+        return [];
+      }
+    },
+    enabled: !!currentHospitalId
+  });
+  
+  // Get hospital staff count
+  const { data: staffCount = 0 } = useQuery({
+    queryKey: ['hospitalStaffCount', currentHospitalId],
+    queryFn: async () => {
+      if (!currentHospitalId) return 0;
+      
+      const { count, error } = await supabase
+        .from('hospital_staff')
+        .select('*', { count: 'exact', head: true })
+        .eq('hospital_id', currentHospitalId);
       
       if (error) throw error;
-      
-      return data.map(appointment => ({
-        id: appointment.id,
-        name: appointment.patients?.full_name || 'Unknown',
-        time: new Date(appointment.appointment_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        doctor: appointment.doctors?.full_name || 'Unassigned',
-        department: appointment.department || 'General'
-      }));
+      return count || 0;
     },
-    enabled: !!staffInfo?.hospital_id
+    enabled: !!currentHospitalId
   });
+
+  // Format date for display
+  const formatDate = (dateString) => {
+    try {
+      const date = new Date(dateString);
+      return format(date, 'dd/MM/yyyy');
+    } catch (error) {
+      return dateString;
+    }
+  };
   
-  // Activity data for the chart
-  const { 
-    data: activityData = [],
-    isLoading: isLoadingActivity 
-  } = useQuery({
-    queryKey: ['hospitalActivity', staffInfo?.hospital_id],
-    queryFn: async () => {
-      if (!staffInfo?.hospital_id) return [];
-      
-      // Get the last 7 days
-      const dates = [];
-      for (let i = 6; i >= 0; i--) {
-        const date = new Date();
-        date.setDate(date.getDate() - i);
-        dates.push({
-          date: date.toISOString().split('T')[0],
-          label: date.toLocaleDateString('en-US', { weekday: 'short' })
-        });
-      }
-      
-      // For each day, get admissions and discharges
-      const result = [];
-      
-      for (const { date, label } of dates) {
-        const startDate = new Date(date);
-        startDate.setHours(0, 0, 0, 0);
-        
-        const endDate = new Date(date);
-        endDate.setHours(23, 59, 59, 999);
-        
-        // Get admissions
-        const { count: admissions, error: admissionsError } = await supabase
-          .from('medical_records')
-          .select('id', { count: 'exact', head: true })
-          .eq('hospital_id', staffInfo.hospital_id)
-          .eq('record_type', 'admission')
-          .gte('record_date', startDate.toISOString())
-          .lte('record_date', endDate.toISOString());
-        
-        if (admissionsError) throw admissionsError;
-        
-        // Get discharges
-        const { count: discharges, error: dischargesError } = await supabase
-          .from('medical_records')
-          .select('id', { count: 'exact', head: true })
-          .eq('hospital_id', staffInfo.hospital_id)
-          .not('discharge_date', 'is', null)
-          .gte('discharge_date', startDate.toISOString())
-          .lte('discharge_date', endDate.toISOString());
-        
-        if (dischargesError) throw dischargesError;
-        
-        result.push({
-          name: label,
-          admissions: admissions || 0,
-          discharges: discharges || 0
-        });
-      }
-      
-      return result;
-    },
-    enabled: !!staffInfo?.hospital_id
-  });
-  
-  // Stats for the dashboard
-  const stats = [
-    { 
-      title: "Total Patients", 
-      value: isLoadingStats ? "Loading..." : hospitalStats?.totalPatients.toString() || "0", 
-      icon: Users, 
-      color: "text-blue-500" 
-    },
-    { 
-      title: "Available Beds", 
-      value: isLoadingStats ? "Loading..." : hospitalStats?.availableBeds || "0/0", 
-      icon: Bed, 
-      color: "text-green-500" 
-    },
-    { 
-      title: "On Duty Staff", 
-      value: isLoadingStats ? "Loading..." : hospitalStats?.totalStaff.toString() || "0", 
-      icon: UserCheck, 
-      color: "text-purple-500" 
-    },
-    { 
-      title: "Critical Cases", 
-      value: isLoadingStats ? "Loading..." : hospitalStats?.criticalCases.toString() || "0", 
-      icon: AlertCircle, 
-      color: "text-red-500" 
-    },
+  // Format time for display
+  const formatTime = (dateString) => {
+    try {
+      const date = new Date(dateString);
+      return format(date, 'hh:mm a');
+    } catch (error) {
+      return '';
+    }
+  };
+
+  // Mock data for charts
+  const patientAdmissionData = [
+    { name: "Mon", count: 35 },
+    { name: "Tue", count: 42 },
+    { name: "Wed", count: 38 },
+    { name: "Thu", count: 47 },
+    { name: "Fri", count: 51 },
+    { name: "Sat", count: 33 },
+    { name: "Sun", count: 29 },
   ];
+
+  const resourceUtilizationData = [
+    { name: "Beds", value: 85 },
+    { name: "Medicines", value: 60 },
+    { name: "Equipment", value: 72 },
+    { name: "Staff", value: 90 },
+  ];
+
+  const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042"];
 
   return (
     <HospitalLayout>
       <div className="space-y-6">
-        <div className="flex justify-between items-center">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <h1 className="text-3xl font-bold tracking-tight">Hospital Dashboard</h1>
-          <div className="flex items-center space-x-2">
-            <Clock className="h-5 w-5 text-muted-foreground" />
-            <span className="text-muted-foreground">
-              {new Date().toLocaleString('en-US', { 
-                weekday: 'long', 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric', 
-                hour: '2-digit', 
-                minute: '2-digit' 
-              })}
-            </span>
+          <div className="flex gap-2">
+            <Button variant="outline">
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Refresh Data
+            </Button>
+            <Button className="bg-health-600 hover:bg-health-700">
+              <Calendar className="mr-2 h-4 w-4" />
+              View Calendar
+            </Button>
           </div>
         </div>
 
-        {/* Welcome card */}
-        {isLoadingStaffInfo ? (
+        {/* Stats Overview */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           <Card>
-            <CardContent className="p-6 flex items-center justify-center">
-              <Loader2 className="h-8 w-8 animate-spin text-health-600" />
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Registered Patients
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between">
+                <div className="text-2xl font-bold">{registeredPatients.length}</div>
+                <Users className="h-6 w-6 text-health-500" />
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                +12% from last month
+              </p>
             </CardContent>
           </Card>
-        ) : staffInfo ? (
+          
           <Card>
-            <CardContent className="p-6">
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                <div>
-                  <h2 className="text-2xl font-bold">Welcome, {staffInfo.full_name || 'Staff Member'}</h2>
-                  <p className="text-muted-foreground mt-1">
-                    {staffInfo.hospitals?.name || 'Hospital'} • {staffInfo.role || 'Staff'} • {staffInfo.department || 'Department'}
-                  </p>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Available Beds
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between">
+                <div className="text-2xl font-bold">{availableBeds} <span className="text-sm font-normal text-muted-foreground">of {totalBeds}</span></div>
+                <Bed className="h-6 w-6 text-health-500" />
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                {Math.round((availableBeds / totalBeds) * 100)}% availability rate
+              </p>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Critical Cases
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between">
+                <div className="text-2xl font-bold">8</div>
+                <Activity className="h-6 w-6 text-health-500" />
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                -3% from last week
+              </p>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Staff Members
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between">
+                <div className="text-2xl font-bold">{staffCount}</div>
+                <User className="h-6 w-6 text-health-500" />
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                +2 new members this month
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Patient Flow Chart & Resource Utilization */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Card className="col-span-1">
+            <CardHeader>
+              <div className="flex justify-between items-center">
+                <CardTitle>Patient Admissions</CardTitle>
+                <div className="flex gap-2">
+                  <Button
+                    variant={selectedTimeframe === "week" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setSelectedTimeframe("week")}
+                  >
+                    Week
+                  </Button>
+                  <Button
+                    variant={selectedTimeframe === "month" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setSelectedTimeframe("month")}
+                  >
+                    Month
+                  </Button>
                 </div>
+              </div>
+              <CardDescription>
+                Number of patients admitted over time
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[300px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={patientAdmissionData}
+                    margin={{
+                      top: 10,
+                      right: 10,
+                      left: 0,
+                      bottom: 20,
+                    }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                    <YAxis tick={{ fontSize: 12 }} />
+                    <Tooltip />
+                    <Bar
+                      dataKey="count"
+                      fill="#3b82f6"
+                      radius={[4, 4, 0, 0]}
+                      name="Patients"
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
               </div>
             </CardContent>
           </Card>
-        ) : null}
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {stats.map((stat, index) => {
-            const Icon = stat.icon;
-            return (
-              <Card key={index}>
-                <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <CardTitle className="text-sm font-medium">{stat.title}</CardTitle>
-                  <Icon className={`h-5 w-5 ${stat.color}`} />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{stat.value}</div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-
-        {/* Activity Chart and Patients Table */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Activity Overview */}
           <Card className="col-span-1">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Activity className="h-5 w-5 text-muted-foreground" />
-                Hospital Activity
-              </CardTitle>
-              <CardDescription>Patient admissions and discharges in the last 7 days</CardDescription>
+              <CardTitle>Resource Utilization</CardTitle>
+              <CardDescription>
+                Current usage of hospital resources
+              </CardDescription>
             </CardHeader>
             <CardContent>
-              {isLoadingActivity ? (
-                <div className="h-[200px] flex items-center justify-center">
-                  <Loader2 className="h-8 w-8 animate-spin text-health-600" />
-                </div>
-              ) : activityData.length > 0 ? (
-                <div className="h-[200px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={activityData}
-                      margin={{ top: 5, right: 20, left: 0, bottom: 5 }}
+              <div className="h-[300px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={resourceUtilizationData}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={({ name, percent }) =>
+                        `${name}: ${(percent * 100).toFixed(0)}%`
+                      }
+                      outerRadius={80}
+                      fill="#8884d8"
+                      dataKey="value"
                     >
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="name" />
-                      <YAxis />
-                      <Tooltip />
-                      <Bar dataKey="admissions" name="Admissions" fill="#4f46e5" />
-                      <Bar dataKey="discharges" name="Discharges" fill="#22c55e" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              ) : (
-                <div className="h-[200px] flex items-center justify-center bg-muted/10 rounded-md border border-dashed">
-                  <span className="text-muted-foreground">No activity data available</span>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Recent Patients */}
-          <Card className="col-span-1">
-            <CardHeader>
-              <CardTitle>Recent Patients</CardTitle>
-              <CardDescription>Latest patient activities</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {isLoadingPatients ? (
-                <div className="flex justify-center py-6">
-                  <Loader2 className="h-8 w-8 animate-spin text-health-600" />
-                </div>
-              ) : recentPatients.length > 0 ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Department</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {recentPatients.map((patient) => (
-                      <TableRow key={patient.id}>
-                        <TableCell className="font-medium">{patient.name}</TableCell>
-                        <TableCell>
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            patient.status === "critical" 
-                              ? "bg-red-100 text-red-800" 
-                              : patient.status === "Admitted" 
-                              ? "bg-blue-100 text-blue-800" 
-                              : patient.status === "Discharged" 
-                              ? "bg-green-100 text-green-800" 
-                              : "bg-gray-100 text-gray-800"
-                          }`}>
-                            {typeof patient.status === 'string' ? 
-                              patient.status.charAt(0).toUpperCase() + patient.status.slice(1) : 
-                              'Unknown'}
-                          </span>
-                        </TableCell>
-                        <TableCell>{patient.department}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              ) : (
-                <div className="text-center py-6">
-                  <p className="text-muted-foreground">No recent patients</p>
-                </div>
-              )}
+                      {resourceUtilizationData.map((entry, index) => (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={COLORS[index % COLORS.length]}
+                        />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                    <Legend verticalAlign="bottom" height={40} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Today's Appointments */}
+        {/* Recent Medical Records */}
         <Card>
           <CardHeader>
-            <CardTitle>Today's Appointments</CardTitle>
-            <CardDescription>Scheduled appointments for today</CardDescription>
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-blue-500" />
+              Recent Medical Records
+            </CardTitle>
+            <CardDescription>
+              Latest medical records across all patients
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            {isLoadingAppointments ? (
-              <div className="flex justify-center py-6">
-                <Loader2 className="h-8 w-8 animate-spin text-health-600" />
-              </div>
-            ) : appointmentsToday.length > 0 ? (
+            <div className="rounded-md border">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Patient Name</TableHead>
-                    <TableHead>Time</TableHead>
-                    <TableHead>Doctor</TableHead>
-                    <TableHead>Department</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Record Type</TableHead>
+                    <TableHead className="hidden md:table-cell">Diagnosis</TableHead>
+                    <TableHead className="hidden md:table-cell">Treatment</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {appointmentsToday.map((appointment) => (
-                    <TableRow key={appointment.id}>
-                      <TableCell className="font-medium">{appointment.name}</TableCell>
-                      <TableCell>{appointment.time}</TableCell>
-                      <TableCell>{appointment.doctor}</TableCell>
-                      <TableCell>{appointment.department}</TableCell>
+                  {recentMedicalRecords.map((record) => (
+                    <TableRow key={record.id}>
+                      <TableCell>{formatDate(record.record_date)}</TableCell>
+                      <TableCell>{record.record_type}</TableCell>
+                      <TableCell className="hidden md:table-cell max-w-sm truncate">{record.diagnosis}</TableCell>
+                      <TableCell className="hidden md:table-cell max-w-sm truncate">{record.treatment}</TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="outline" size="sm">
+                          View Details
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
-            ) : (
-              <div className="text-center py-6">
-                <p className="text-muted-foreground">No appointments scheduled for today</p>
-              </div>
-            )}
+            </div>
           </CardContent>
         </Card>
+
+        {/* Upcoming Appointments */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Calendar className="h-5 w-5 text-green-500" />
+              Upcoming Appointments
+            </CardTitle>
+            <CardDescription>
+              Recently scheduled appointments at this hospital
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date & Time</TableHead>
+                    <TableHead>Patient</TableHead>
+                    <TableHead>Doctor</TableHead>
+                    <TableHead className="hidden md:table-cell">Department</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {upcomingAppointments.map((appointment) => (
+                    <TableRow key={appointment.id}>
+                      <TableCell>
+                        <div className="font-medium">{formatDate(appointment.appointment_date)}</div>
+                        <div className="text-sm text-muted-foreground">{formatTime(appointment.appointment_date)}</div>
+                      </TableCell>
+                      <TableCell>{appointment.patients?.full_name || 'Unknown'}</TableCell>
+                      <TableCell>{appointment.doctors?.full_name || 'Not assigned'}</TableCell>
+                      <TableCell className="hidden md:table-cell">{appointment.department}</TableCell>
+                      <TableCell>
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          appointment.status === "confirmed" 
+                            ? "bg-green-100 text-green-800" 
+                            : appointment.status === "pending"
+                            ? "bg-yellow-100 text-yellow-800"
+                            : "bg-gray-100 text-gray-800"
+                        }`}>
+                          {appointment.status ? (appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)) : 'Unknown'}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="outline" size="sm">
+                          Manage
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Quick Actions */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+          <Button variant="outline" className="h-auto py-4 flex flex-col justify-center items-center gap-2">
+            <User className="h-5 w-5" />
+            <span>Admit Patient</span>
+          </Button>
+          <Button variant="outline" className="h-auto py-4 flex flex-col justify-center items-center gap-2">
+            <BadgeAlert className="h-5 w-5" />
+            <span>Report Emergency</span>
+          </Button>
+          <Button variant="outline" className="h-auto py-4 flex flex-col justify-center items-center gap-2">
+            <HardDrive className="h-5 w-5" />
+            <span>Update Resources</span>
+          </Button>
+          <Button variant="outline" className="h-auto py-4 flex flex-col justify-center items-center gap-2">
+            <ClipboardList className="h-5 w-5" />
+            <span>Generate Report</span>
+          </Button>
+        </div>
       </div>
     </HospitalLayout>
   );

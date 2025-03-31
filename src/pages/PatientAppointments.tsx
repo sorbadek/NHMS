@@ -92,19 +92,24 @@ const PatientAppointments = () => {
       
       const today = new Date().toISOString();
       
-      const { data, error } = await supabase
-        .from('appointments')
-        .select(`
-          *,
-          hospitals:hospital_id(*),
-          doctors:doctor_id(*)
-        `)
-        .eq('patient_id', currentUser.patient.id)
-        .gte('appointment_date', today)
-        .order('appointment_date', { ascending: true });
-      
-      if (error) throw error;
-      return data || [];
+      try {
+        const { data, error } = await supabase
+          .from('appointments')
+          .select(`
+            *,
+            hospitals(*),
+            doctors:doctor_id(*)
+          `)
+          .eq('patient_id', currentUser.patient.id)
+          .gte('appointment_date', today)
+          .order('appointment_date', { ascending: true });
+        
+        if (error) throw error;
+        return data || [];
+      } catch (err) {
+        console.error("Error fetching upcoming appointments:", err);
+        return [];
+      }
     },
     enabled: !!currentUser?.patient?.id
   });
@@ -117,26 +122,37 @@ const PatientAppointments = () => {
       
       const today = new Date().toISOString();
       
-      const { data, error } = await supabase
-        .from('appointments')
-        .select(`
-          *,
-          hospitals:hospital_id(*),
-          doctors:doctor_id(*)
-        `)
-        .eq('patient_id', currentUser.patient.id)
-        .lt('appointment_date', today)
-        .order('appointment_date', { ascending: false });
-      
-      if (error) throw error;
-      return data || [];
+      try {
+        const { data, error } = await supabase
+          .from('appointments')
+          .select(`
+            *,
+            hospitals(*),
+            doctors:doctor_id(*)
+          `)
+          .eq('patient_id', currentUser.patient.id)
+          .lt('appointment_date', today)
+          .order('appointment_date', { ascending: false });
+        
+        if (error) throw error;
+        return data || [];
+      } catch (err) {
+        console.error("Error fetching past appointments:", err);
+        return [];
+      }
     },
     enabled: !!currentUser?.patient?.id
   });
   
   // Book appointment mutation
   const bookAppointmentMutation = useMutation({
-    mutationFn: async (appointmentData) => {
+    mutationFn: async (appointmentData: {
+      hospitalId: string;
+      department: string;
+      date: string;
+      time: string;
+      reason: string;
+    }) => {
       if (!currentUser?.patient?.id) {
         throw new Error("Patient profile not found");
       }
@@ -156,19 +172,19 @@ const PatientAppointments = () => {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['upcomingAppointments']);
+      queryClient.invalidateQueries({ queryKey: ['upcomingAppointments'] });
       toast.success("Appointment request submitted successfully!");
       setShowBookingDialog(false);
       resetForm();
     },
     onError: (error) => {
-      toast.error(`Failed to book appointment: ${error.message}`);
+      toast.error(`Failed to book appointment: ${error instanceof Error ? error.message : String(error)}`);
     }
   });
   
   // Cancel appointment mutation
   const cancelAppointmentMutation = useMutation({
-    mutationFn: async (appointmentId) => {
+    mutationFn: async (appointmentId: string) => {
       const { data, error } = await supabase
         .from('appointments')
         .update({ status: 'cancelled' })
@@ -178,11 +194,11 @@ const PatientAppointments = () => {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['upcomingAppointments']);
+      queryClient.invalidateQueries({ queryKey: ['upcomingAppointments'] });
       toast.success("Appointment cancelled successfully!");
     },
     onError: (error) => {
-      toast.error(`Failed to cancel appointment: ${error.message}`);
+      toast.error(`Failed to cancel appointment: ${error instanceof Error ? error.message : String(error)}`);
     }
   });
   
@@ -201,7 +217,7 @@ const PatientAppointments = () => {
     });
   };
   
-  const handleCancelAppointment = (appointmentId) => {
+  const handleCancelAppointment = (appointmentId: string) => {
     if (confirm("Are you sure you want to cancel this appointment?")) {
       cancelAppointmentMutation.mutate(appointmentId);
     }
@@ -216,7 +232,7 @@ const PatientAppointments = () => {
   };
   
   // Format date for display
-  const formatDate = (dateString) => {
+  const formatDate = (dateString: string) => {
     try {
       const date = new Date(dateString);
       return format(date, 'dd/MM/yyyy');
@@ -226,7 +242,7 @@ const PatientAppointments = () => {
   };
   
   // Format time for display
-  const formatTime = (dateString) => {
+  const formatTime = (dateString: string) => {
     try {
       const date = new Date(dateString);
       return format(date, 'hh:mm a');
@@ -296,7 +312,7 @@ const PatientAppointments = () => {
                               ? "bg-yellow-100 text-yellow-800"
                               : "bg-gray-100 text-gray-800"
                           }`}>
-                            {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)}
+                            {appointment.status ? (appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)) : 'Unknown'}
                           </span>
                         </TableCell>
                         <TableCell className="text-right">
@@ -382,7 +398,7 @@ const PatientAppointments = () => {
                               ? "bg-red-100 text-red-800"
                               : "bg-gray-100 text-gray-800"
                           }`}>
-                            {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)}
+                            {appointment.status ? (appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)) : 'Unknown'}
                           </span>
                         </TableCell>
                         <TableCell className="hidden md:table-cell">{appointment.notes || 'No notes available'}</TableCell>
