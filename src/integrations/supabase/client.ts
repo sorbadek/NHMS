@@ -65,6 +65,20 @@ export type HospitalRow = {
   updated_at?: string | null;
 };
 
+// User roles - expanded to include all role types
+export enum UserRole {
+  SUPER_ADMIN = 'super_admin',
+  HOSPITAL_ADMIN = 'hospital_admin',
+  DOCTOR = 'doctor',
+  NURSE = 'nurse',
+  LAB_TECHNICIAN = 'lab_technician',
+  PHARMACIST = 'pharmacist',
+  RECEPTIONIST = 'receptionist',
+  POLICE_ADMIN = 'police_admin',
+  POLICE_OFFICER = 'police_officer',
+  PATIENT = 'patient'
+}
+
 // Extend Database type to include the appointments table
 export type ExtendedDatabase = Database & {
   public: {
@@ -108,16 +122,108 @@ export type WithJoins<T> = T & Record<string, any>;
 
 // Type helper for appointments with joins
 export type AppointmentWithJoins = AppointmentRow & {
-  patients?: UserRow | null;
-  doctors?: UserRow | null;
-  hospitals?: HospitalRow | null;
+  patients?: PatientRow | UserRow | Record<string, any> | null;
+  doctors?: UserRow | Record<string, any> | null;
+  hospitals?: HospitalRow | Record<string, any> | null;
 };
 
 // Helper function to safely extract nested data
-export const extractNestedData = <T, K extends keyof T>(
-  obj: T | null | undefined,
+export const extractNestedData = <T extends Record<string, any> | null | undefined, K extends string>(
+  obj: T,
   key: K
-): T[K] | undefined => {
+): any => {
   if (!obj) return undefined;
   return obj[key];
+};
+
+// Helper function to get a property from a nested object with type safety
+export const getNestedProperty = (obj: any, prop: string, fallback: any = null): any => {
+  if (!obj || typeof obj !== 'object') return fallback;
+  return obj[prop] !== undefined ? obj[prop] : fallback;
+};
+
+// Email notification utility
+export const sendEmailNotification = async (
+  to: string,
+  subject: string,
+  content: string
+): Promise<{ success: boolean; error?: string }> => {
+  try {
+    const { data, error } = await supabase.functions.invoke('send-email', {
+      body: { to, subject, content }
+    });
+    
+    if (error) throw error;
+    
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to send email notification:", error);
+    return { 
+      success: false, 
+      error: error.message || "Failed to send email notification" 
+    };
+  }
+};
+
+// Authentication helper function with role verification
+export const getUserWithRole = async (): Promise<{
+  user: UserRow | null;
+  role: string | null;
+  organization_id: string | null;
+}> => {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session) {
+      return { user: null, role: null, organization_id: null };
+    }
+    
+    // Get user data
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', session.user.id)
+      .single();
+    
+    if (userError) {
+      console.error("Error fetching user data:", userError);
+      return { user: null, role: null, organization_id: null };
+    }
+    
+    let role = null;
+    let organization_id = null;
+    
+    // Determine role and organization based on user type
+    if (userData.user_type === 'hospital_staff') {
+      const { data: staffData } = await supabase
+        .from('hospital_staff')
+        .select('*')
+        .eq('user_id', session.user.id)
+        .single();
+      
+      if (staffData) {
+        role = staffData.role;
+        organization_id = staffData.hospital_id;
+      }
+    } else if (userData.user_type === 'police') {
+      const { data: officerData } = await supabase
+        .from('police_officers')
+        .select('*')
+        .eq('user_id', session.user.id)
+        .single();
+      
+      if (officerData) {
+        role = officerData.rank;
+        organization_id = officerData.department_id;
+      }
+    } else {
+      // For patient or admin
+      role = userData.user_type;
+    }
+    
+    return { user: userData, role, organization_id };
+  } catch (error) {
+    console.error("Error in getUserWithRole:", error);
+    return { user: null, role: null, organization_id: null };
+  }
 };
