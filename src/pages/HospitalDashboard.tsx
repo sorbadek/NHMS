@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import {
   Card,
@@ -555,35 +554,40 @@ const HospitalDashboard = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {upcomingAppointments.map((appointment) => (
-                      <TableRow key={appointment.id}>
-                        <TableCell>
-                          <div className="font-medium">{formatDate(appointment?.appointment_date)}</div>
-                          <div className="text-sm text-muted-foreground">{formatTime(appointment?.appointment_date)}</div>
-                        </TableCell>
-                        <TableCell>{appointment?.patients?.full_name || 'Unknown'}</TableCell>
-                        <TableCell>{appointment?.doctors?.full_name || 'Not assigned'}</TableCell>
-                        <TableCell className="hidden md:table-cell">{appointment?.department || 'General'}</TableCell>
-                        <TableCell>
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            appointment?.status === "confirmed" 
-                              ? "bg-green-100 text-green-800" 
-                              : appointment?.status === "pending"
-                              ? "bg-yellow-100 text-yellow-800"
-                              : "bg-gray-100 text-gray-800"
-                          }`}>
-                            {appointment?.status 
-                              ? (appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)) 
-                              : 'Unknown'}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button variant="outline" size="sm">
-                            Manage
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {upcomingAppointments.map((appointment) => {
+                      const patientData = appointment.patients && typeof appointment.patients === 'object' ? appointment.patients : null;
+                      const doctorData = appointment.doctors && typeof appointment.doctors === 'object' ? appointment.doctors : null;
+                      
+                      return (
+                        <TableRow key={appointment.id}>
+                          <TableCell>
+                            <div className="font-medium">{formatDate(appointment?.appointment_date)}</div>
+                            <div className="text-sm text-muted-foreground">{formatTime(appointment?.appointment_date)}</div>
+                          </TableCell>
+                          <TableCell>{patientData && 'full_name' in patientData ? patientData.full_name : 'Unknown'}</TableCell>
+                          <TableCell>{doctorData && 'full_name' in doctorData ? doctorData.full_name : 'Not assigned'}</TableCell>
+                          <TableCell className="hidden md:table-cell">{appointment?.department || 'General'}</TableCell>
+                          <TableCell>
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                              appointment?.status === "confirmed" 
+                                ? "bg-green-100 text-green-800" 
+                                : appointment?.status === "pending"
+                                ? "bg-yellow-100 text-yellow-800"
+                                : "bg-gray-100 text-gray-800"
+                            }`}>
+                              {appointment?.status 
+                                ? (appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)) 
+                                : 'Unknown'}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button variant="outline" size="sm">
+                              Manage
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>

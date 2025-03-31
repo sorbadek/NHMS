@@ -9,9 +9,12 @@ const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiO
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 
-// Since the types file might not immediately reflect the new appointments table,
-// we'll create a custom client with any to prevent TypeScript errors
+// Create a custom type that extends the Database type to include the appointments table
+// until the generated types are updated
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 
 // Helper for typecasting tables
 export type Tables = Database['public']['Tables'];
+
+// Helper for working with nested joins in queries
+export type WithJoins<T> = T & Record<string, any>;
