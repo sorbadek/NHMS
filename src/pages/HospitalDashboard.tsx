@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import {
   Card,
@@ -42,7 +43,7 @@ import {
   ClipboardList,
 } from "lucide-react";
 import HospitalLayout from "@/components/HospitalLayout";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, AppointmentWithJoins, extractNestedData } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { toast } from "sonner";
