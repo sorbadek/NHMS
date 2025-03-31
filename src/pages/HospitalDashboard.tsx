@@ -179,7 +179,8 @@ const HospitalDashboard = () => {
           .select(`
             *,
             patients:patient_id(id, full_name),
-            doctors:doctor_id(id, full_name)
+            doctors:doctor_id(id, full_name),
+            hospitals:hospital_id(id, name)
           `)
           .eq('hospital_id', currentHospitalId)
           .gte('appointment_date', today)
@@ -191,7 +192,7 @@ const HospitalDashboard = () => {
           return [];
         }
         
-        return data || [];
+        return (data || []) as AppointmentWithJoins[];
       } catch (err) {
         console.error("Error fetching hospital appointments:", err);
         toast.error("Failed to fetch hospital appointments");
@@ -557,6 +558,7 @@ const HospitalDashboard = () => {
                     {upcomingAppointments.map((appointment) => {
                       const patientData = appointment.patients && typeof appointment.patients === 'object' ? appointment.patients : null;
                       const doctorData = appointment.doctors && typeof appointment.doctors === 'object' ? appointment.doctors : null;
+                      const hospitalData = appointment.hospitals && typeof appointment.hospitals === 'object' ? appointment.hospitals : null;
                       
                       return (
                         <TableRow key={appointment.id}>
@@ -564,8 +566,8 @@ const HospitalDashboard = () => {
                             <div className="font-medium">{formatDate(appointment?.appointment_date)}</div>
                             <div className="text-sm text-muted-foreground">{formatTime(appointment?.appointment_date)}</div>
                           </TableCell>
-                          <TableCell>{patientData && 'full_name' in patientData ? patientData.full_name : 'Unknown'}</TableCell>
-                          <TableCell>{doctorData && 'full_name' in doctorData ? doctorData.full_name : 'Not assigned'}</TableCell>
+                          <TableCell>{patientData?.full_name || 'Unknown'}</TableCell>
+                          <TableCell>{doctorData?.full_name || 'Not assigned'}</TableCell>
                           <TableCell className="hidden md:table-cell">{appointment?.department || 'General'}</TableCell>
                           <TableCell>
                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${

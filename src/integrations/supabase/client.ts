@@ -11,10 +11,113 @@ const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiO
 
 // Create a custom type that extends the Database type to include the appointments table
 // until the generated types are updated
-export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+export type AppointmentRow = {
+  id: string;
+  patient_id?: string | null;
+  hospital_id?: string | null;
+  doctor_id?: string | null;
+  department?: string | null;
+  appointment_date: string;
+  reason?: string | null;
+  status?: string | null;
+  notes?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type PatientRow = {
+  id: string;
+  user_id?: string | null;
+  full_name?: string;
+  date_of_birth?: string | null;
+  gender?: string | null;
+  blood_type?: string | null;
+  allergies?: string | null;
+  emergency_contact_name?: string | null;
+  emergency_contact_phone?: string | null;
+  national_id?: string | null;
+  status?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type UserRow = {
+  id: string;
+  full_name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  user_type?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type HospitalRow = {
+  id: string;
+  name: string;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  license_number?: string | null;
+  status?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+// Extend Database type to include the appointments table
+export type ExtendedDatabase = Database & {
+  public: {
+    Tables: Database['public']['Tables'] & {
+      appointments: {
+        Row: AppointmentRow;
+        Insert: Omit<AppointmentRow, 'id' | 'created_at' | 'updated_at'> & { id?: string };
+        Update: Partial<Omit<AppointmentRow, 'id'>>;
+        Relationships: [
+          {
+            foreignKeyName: 'appointments_patient_id_fkey';
+            columns: ['patient_id'];
+            referencedRelation: 'patients';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'appointments_hospital_id_fkey';
+            columns: ['hospital_id'];
+            referencedRelation: 'hospitals';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'appointments_doctor_id_fkey';
+            columns: ['doctor_id'];
+            referencedRelation: 'users';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
+    };
+  };
+};
+
+export const supabase = createClient<ExtendedDatabase>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 
 // Helper for typecasting tables
-export type Tables = Database['public']['Tables'];
+export type Tables = ExtendedDatabase['public']['Tables'];
 
 // Helper for working with nested joins in queries
 export type WithJoins<T> = T & Record<string, any>;
+
+// Type helper for appointments with joins
+export type AppointmentWithJoins = AppointmentRow & {
+  patients?: UserRow | null;
+  doctors?: UserRow | null;
+  hospitals?: HospitalRow | null;
+};
+
+// Helper function to safely extract nested data
+export const extractNestedData = <T, K extends keyof T>(
+  obj: T | null | undefined,
+  key: K
+): T[K] | undefined => {
+  if (!obj) return undefined;
+  return obj[key];
+};
