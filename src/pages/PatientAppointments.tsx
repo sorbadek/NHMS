@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { 
   Card, 
   CardContent, 
@@ -36,51 +36,63 @@ const PatientAppointments = () => {
   const queryClient = useQueryClient();
   
   // Get current user
-  const { data: currentUser } = useQuery({
+  const { data: currentUser, isLoading: isLoadingUser } = useQuery({
     queryKey: ['currentUser'],
     queryFn: async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error("Not authenticated");
-      
-      // Get user profile data
-      const { data: userData, error: userError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', session.user.id)
-        .single();
-      
-      if (userError) throw userError;
-      
-      // Get patient data
-      const { data: patientData, error: patientError } = await supabase
-        .from('patients')
-        .select('*')
-        .eq('user_id', session.user.id)
-        .single();
-      
-      if (patientError && patientError.code !== 'PGRST116') {
-        throw patientError;
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error("Not authenticated");
+        
+        // Get user profile data
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+        
+        if (userError) throw userError;
+        
+        // Get patient data
+        const { data: patientData, error: patientError } = await supabase
+          .from('patients')
+          .select('*')
+          .eq('user_id', session.user.id)
+          .single();
+        
+        if (patientError && patientError.code !== 'PGRST116') {
+          throw patientError;
+        }
+        
+        return { 
+          ...session.user,
+          ...userData,
+          patient: patientData || null
+        };
+      } catch (error) {
+        console.error("Error fetching user:", error);
+        toast.error("Failed to fetch user information");
+        return null;
       }
-      
-      return { 
-        ...session.user,
-        ...userData,
-        patient: patientData || null
-      };
     }
   });
   
   // Get available hospitals
-  const { data: availableHospitals = [] } = useQuery({
+  const { data: availableHospitals = [], isLoading: isLoadingHospitals } = useQuery({
     queryKey: ['hospitals'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('hospitals')
-        .select('*')
-        .eq('status', 'active');
-      
-      if (error) throw error;
-      return data || [];
+      try {
+        const { data, error } = await supabase
+          .from('hospitals')
+          .select('*')
+          .eq('status', 'active');
+        
+        if (error) throw error;
+        return data || [];
+      } catch (error) {
+        console.error("Error fetching hospitals:", error);
+        toast.error("Failed to fetch available hospitals");
+        return [];
+      }
     }
   });
   
@@ -93,21 +105,27 @@ const PatientAppointments = () => {
       const today = new Date().toISOString();
       
       try {
+        // Using any for now to work around type issues
         const { data, error } = await supabase
           .from('appointments')
           .select(`
             *,
-            hospitals(*),
+            hospitals:hospital_id(*),
             doctors:doctor_id(*)
           `)
           .eq('patient_id', currentUser.patient.id)
           .gte('appointment_date', today)
           .order('appointment_date', { ascending: true });
         
-        if (error) throw error;
+        if (error) {
+          console.error("Error fetching upcoming appointments:", error);
+          return [];
+        }
+        
         return data || [];
       } catch (err) {
         console.error("Error fetching upcoming appointments:", err);
+        toast.error("Failed to fetch upcoming appointments");
         return [];
       }
     },
@@ -123,21 +141,27 @@ const PatientAppointments = () => {
       const today = new Date().toISOString();
       
       try {
+        // Using any for now to work around type issues
         const { data, error } = await supabase
           .from('appointments')
           .select(`
             *,
-            hospitals(*),
+            hospitals:hospital_id(*),
             doctors:doctor_id(*)
           `)
           .eq('patient_id', currentUser.patient.id)
           .lt('appointment_date', today)
           .order('appointment_date', { ascending: false });
         
-        if (error) throw error;
+        if (error) {
+          console.error("Error fetching past appointments:", error);
+          return [];
+        }
+        
         return data || [];
       } catch (err) {
         console.error("Error fetching past appointments:", err);
+        toast.error("Failed to fetch past appointments");
         return [];
       }
     },
@@ -157,21 +181,27 @@ const PatientAppointments = () => {
         throw new Error("Patient profile not found");
       }
       
-      const { data, error } = await supabase
-        .from('appointments')
-        .insert([{
-          patient_id: currentUser.patient.id,
-          hospital_id: appointmentData.hospitalId,
-          department: appointmentData.department,
-          appointment_date: new Date(`${appointmentData.date}T${appointmentData.time}`).toISOString(),
-          reason: appointmentData.reason,
-          status: 'pending'
-        }]);
-      
-      if (error) throw error;
-      return data;
+      try {
+        const { data, error } = await supabase
+          .from('appointments')
+          .insert([{
+            patient_id: currentUser.patient.id,
+            hospital_id: appointmentData.hospitalId,
+            department: appointmentData.department,
+            appointment_date: new Date(`${appointmentData.date}T${appointmentData.time}`).toISOString(),
+            reason: appointmentData.reason,
+            status: 'pending'
+          }]);
+        
+        if (error) throw error;
+        return data;
+      } catch (error) {
+        console.error("Error booking appointment:", error);
+        throw error;
+      }
     },
     onSuccess: () => {
+      // Use the correct invalidation format
       queryClient.invalidateQueries({ queryKey: ['upcomingAppointments'] });
       toast.success("Appointment request submitted successfully!");
       setShowBookingDialog(false);
@@ -185,15 +215,21 @@ const PatientAppointments = () => {
   // Cancel appointment mutation
   const cancelAppointmentMutation = useMutation({
     mutationFn: async (appointmentId: string) => {
-      const { data, error } = await supabase
-        .from('appointments')
-        .update({ status: 'cancelled' })
-        .eq('id', appointmentId);
-      
-      if (error) throw error;
-      return data;
+      try {
+        const { data, error } = await supabase
+          .from('appointments')
+          .update({ status: 'cancelled' })
+          .eq('id', appointmentId);
+        
+        if (error) throw error;
+        return data;
+      } catch (error) {
+        console.error("Error cancelling appointment:", error);
+        throw error;
+      }
     },
     onSuccess: () => {
+      // Use the correct invalidation format
       queryClient.invalidateQueries({ queryKey: ['upcomingAppointments'] });
       toast.success("Appointment cancelled successfully!");
     },
@@ -232,24 +268,54 @@ const PatientAppointments = () => {
   };
   
   // Format date for display
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString?: string) => {
     try {
+      if (!dateString) return '';
       const date = new Date(dateString);
       return format(date, 'dd/MM/yyyy');
     } catch (error) {
-      return dateString;
+      console.error("Error formatting date:", error);
+      return dateString || '';
     }
   };
   
   // Format time for display
-  const formatTime = (dateString: string) => {
+  const formatTime = (dateString?: string) => {
     try {
+      if (!dateString) return '';
       const date = new Date(dateString);
       return format(date, 'hh:mm a');
     } catch (error) {
+      console.error("Error formatting time:", error);
       return '';
     }
   };
+
+  // Loading state for the entire page
+  const isLoading = isLoadingUser || isLoadingHospitals || isLoadingUpcoming || isLoadingPast;
+
+  if (isLoading) {
+    return (
+      <PatientLayout>
+        <div className="flex justify-center items-center h-screen">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        </div>
+      </PatientLayout>
+    );
+  }
+
+  // If no patient profile is found
+  if (!currentUser?.patient && !isLoadingUser) {
+    return (
+      <PatientLayout>
+        <div className="flex flex-col items-center justify-center h-screen">
+          <h1 className="text-2xl font-bold mb-4">Patient Profile Not Found</h1>
+          <p className="mb-4">You need to complete your patient profile before booking appointments.</p>
+          <Button onClick={() => window.location.href = '/patient-dashboard'}>Go to Dashboard</Button>
+        </div>
+      </PatientLayout>
+    );
+  }
 
   return (
     <PatientLayout>
@@ -295,24 +361,26 @@ const PatientAppointments = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {upcomingAppointments.map((appointment) => (
+                    {upcomingAppointments.map((appointment: any) => (
                       <TableRow key={appointment.id}>
                         <TableCell>
-                          <div className="font-medium">{formatDate(appointment.appointment_date)}</div>
-                          <div className="text-sm text-muted-foreground">{formatTime(appointment.appointment_date)}</div>
+                          <div className="font-medium">{formatDate(appointment?.appointment_date)}</div>
+                          <div className="text-sm text-muted-foreground">{formatTime(appointment?.appointment_date)}</div>
                         </TableCell>
-                        <TableCell>{appointment.doctors?.full_name || 'Not assigned'}</TableCell>
-                        <TableCell>{appointment.hospitals?.name || 'Unknown'}</TableCell>
-                        <TableCell className="hidden md:table-cell">{appointment.department}</TableCell>
+                        <TableCell>{appointment?.doctors?.full_name || 'Not assigned'}</TableCell>
+                        <TableCell>{appointment?.hospitals?.name || 'Unknown'}</TableCell>
+                        <TableCell className="hidden md:table-cell">{appointment?.department || 'General'}</TableCell>
                         <TableCell>
                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            appointment.status === "confirmed" 
+                            appointment?.status === "confirmed" 
                               ? "bg-green-100 text-green-800" 
-                              : appointment.status === "pending"
+                              : appointment?.status === "pending"
                               ? "bg-yellow-100 text-yellow-800"
                               : "bg-gray-100 text-gray-800"
                           }`}>
-                            {appointment.status ? (appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)) : 'Unknown'}
+                            {appointment?.status 
+                              ? (appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)) 
+                              : 'Unknown'}
                           </span>
                         </TableCell>
                         <TableCell className="text-right">
@@ -322,7 +390,7 @@ const PatientAppointments = () => {
                               size="sm"
                               className="text-red-500 hover:text-red-700"
                               onClick={() => handleCancelAppointment(appointment.id)}
-                              disabled={appointment.status === 'cancelled'}
+                              disabled={appointment?.status === 'cancelled'}
                             >
                               <X className="h-4 w-4 mr-1" />
                               Cancel
@@ -381,27 +449,29 @@ const PatientAppointments = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {pastAppointments.map((appointment) => (
+                    {pastAppointments.map((appointment: any) => (
                       <TableRow key={appointment.id}>
                         <TableCell>
-                          <div className="font-medium">{formatDate(appointment.appointment_date)}</div>
-                          <div className="text-sm text-muted-foreground">{formatTime(appointment.appointment_date)}</div>
+                          <div className="font-medium">{formatDate(appointment?.appointment_date)}</div>
+                          <div className="text-sm text-muted-foreground">{formatTime(appointment?.appointment_date)}</div>
                         </TableCell>
-                        <TableCell>{appointment.doctors?.full_name || 'Not assigned'}</TableCell>
-                        <TableCell className="hidden md:table-cell">{appointment.hospitals?.name || 'Unknown'}</TableCell>
-                        <TableCell className="hidden md:table-cell">{appointment.department}</TableCell>
+                        <TableCell>{appointment?.doctors?.full_name || 'Not assigned'}</TableCell>
+                        <TableCell className="hidden md:table-cell">{appointment?.hospitals?.name || 'Unknown'}</TableCell>
+                        <TableCell className="hidden md:table-cell">{appointment?.department || 'General'}</TableCell>
                         <TableCell>
                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            appointment.status === "completed" 
+                            appointment?.status === "completed" 
                               ? "bg-green-100 text-green-800" 
-                              : appointment.status === "cancelled"
+                              : appointment?.status === "cancelled"
                               ? "bg-red-100 text-red-800"
                               : "bg-gray-100 text-gray-800"
                           }`}>
-                            {appointment.status ? (appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)) : 'Unknown'}
+                            {appointment?.status 
+                              ? (appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)) 
+                              : 'Unknown'}
                           </span>
                         </TableCell>
-                        <TableCell className="hidden md:table-cell">{appointment.notes || 'No notes available'}</TableCell>
+                        <TableCell className="hidden md:table-cell">{appointment?.notes || 'No notes available'}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -439,7 +509,7 @@ const PatientAppointments = () => {
                   onChange={(e) => setSelectedHospital(e.target.value)}
                 >
                   <option value="">Select a hospital</option>
-                  {availableHospitals.map(hospital => (
+                  {availableHospitals.map((hospital) => (
                     <option key={hospital.id} value={hospital.id}>{hospital.name}</option>
                   ))}
                 </select>

@@ -46,42 +46,55 @@ import HospitalLayout from "@/components/HospitalLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
+import { toast } from "sonner";
 
 const HospitalDashboard = () => {
   const [selectedTimeframe, setSelectedTimeframe] = useState("week");
   
   // Get current hospital
-  const { data: currentHospitalId } = useQuery({
+  const { data: currentHospitalId, isLoading: isLoadingHospital } = useQuery({
     queryKey: ['currentHospitalId'],
     queryFn: async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error("Not authenticated");
-      
-      // Get hospital staff record for current user
-      const { data: staffData, error: staffError } = await supabase
-        .from('hospital_staff')
-        .select('hospital_id')
-        .eq('user_id', session.user.id)
-        .single();
-      
-      if (staffError) throw staffError;
-      return staffData.hospital_id;
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error("Not authenticated");
+        
+        // Get hospital staff record for current user
+        const { data: staffData, error: staffError } = await supabase
+          .from('hospital_staff')
+          .select('hospital_id')
+          .eq('user_id', session.user.id)
+          .single();
+        
+        if (staffError) throw staffError;
+        return staffData.hospital_id;
+      } catch (error) {
+        console.error("Error fetching current hospital:", error);
+        toast.error("Failed to fetch current hospital information");
+        return null;
+      }
     }
   });
   
   // Get hospital resources
-  const { data: resources = [] } = useQuery({
+  const { data: resources = [], isLoading: isLoadingResources } = useQuery({
     queryKey: ['hospitalResources', currentHospitalId],
     queryFn: async () => {
       if (!currentHospitalId) return [];
       
-      const { data, error } = await supabase
-        .from('resources')
-        .select('*')
-        .eq('hospital_id', currentHospitalId);
-      
-      if (error) throw error;
-      return data || [];
+      try {
+        const { data, error } = await supabase
+          .from('resources')
+          .select('*')
+          .eq('hospital_id', currentHospitalId);
+        
+        if (error) throw error;
+        return data || [];
+      } catch (error) {
+        console.error("Error fetching resources:", error);
+        toast.error("Failed to fetch hospital resources");
+        return [];
+      }
     },
     enabled: !!currentHospitalId
   });
@@ -96,48 +109,64 @@ const HospitalDashboard = () => {
     .reduce((sum, bed) => sum + (bed.quantity || 0), 0);
   
   // Get registered patients
-  const { data: registeredPatients = [] } = useQuery({
+  const { data: registeredPatients = [], isLoading: isLoadingPatients } = useQuery({
     queryKey: ['registeredPatients', currentHospitalId],
     queryFn: async () => {
       if (!currentHospitalId) return [];
       
-      // Get unique patients that have had appointments at this hospital
-      const { data, error } = await supabase
-        .from('appointments')
-        .select('patient_id')
-        .eq('hospital_id', currentHospitalId)
-        .is('patient_id', 'not.null');
-      
-      if (error) throw error;
-      
-      // Get unique patient IDs
-      const uniquePatientIds = [...new Set(data.map(record => record.patient_id))];
-      return uniquePatientIds || [];
+      try {
+        // Get unique patients that have had appointments at this hospital
+        // Using any for now to work around type issues
+        const { data, error } = await supabase
+          .from('appointments')
+          .select('patient_id')
+          .eq('hospital_id', currentHospitalId)
+          .not('patient_id', 'is', null);
+        
+        if (error) {
+          console.error("Error fetching patients:", error);
+          return [];
+        }
+        
+        // Get unique patient IDs
+        const uniquePatientIds = [...new Set(data.map(record => record.patient_id))];
+        return uniquePatientIds || [];
+      } catch (error) {
+        console.error("Error fetching registered patients:", error);
+        toast.error("Failed to fetch patient information");
+        return [];
+      }
     },
     enabled: !!currentHospitalId
   });
   
   // Get recent medical records
-  const { data: recentMedicalRecords = [] } = useQuery({
+  const { data: recentMedicalRecords = [], isLoading: isLoadingRecords } = useQuery({
     queryKey: ['recentMedicalRecords', currentHospitalId],
     queryFn: async () => {
       if (!currentHospitalId) return [];
       
-      const { data, error } = await supabase
-        .from('medical_records')
-        .select('*')
-        .eq('hospital_id', currentHospitalId)
-        .order('record_date', { ascending: false })
-        .limit(5);
-      
-      if (error) throw error;
-      return data || [];
+      try {
+        const { data, error } = await supabase
+          .from('medical_records')
+          .select('*')
+          .eq('hospital_id', currentHospitalId)
+          .order('record_date', { ascending: false })
+          .limit(5);
+        
+        if (error) throw error;
+        return data || [];
+      } catch (error) {
+        console.error("Error fetching medical records:", error);
+        toast.error("Failed to fetch medical records");
+        return [];
+      }
     },
     enabled: !!currentHospitalId
   });
   
   // Get upcoming appointments
-  const { data: upcomingAppointments = [] } = useQuery({
+  const { data: upcomingAppointments = [], isLoading: isLoadingAppointments } = useQuery({
     queryKey: ['upcomingHospitalAppointments', currentHospitalId],
     queryFn: async () => {
       if (!currentHospitalId) return [];
@@ -145,22 +174,28 @@ const HospitalDashboard = () => {
       const today = new Date().toISOString();
       
       try {
+        // Using any type for now to work around type issues
         const { data, error } = await supabase
           .from('appointments')
           .select(`
             *,
-            patients:patient_id(*),
-            doctors:doctor_id(*)
+            patients:patient_id(id, full_name),
+            doctors:doctor_id(id, full_name)
           `)
           .eq('hospital_id', currentHospitalId)
           .gte('appointment_date', today)
           .order('appointment_date', { ascending: true })
           .limit(5);
         
-        if (error) throw error;
+        if (error) {
+          console.error("Error fetching appointments:", error);
+          return [];
+        }
+        
         return data || [];
       } catch (err) {
         console.error("Error fetching hospital appointments:", err);
+        toast.error("Failed to fetch hospital appointments");
         return [];
       }
     },
@@ -168,18 +203,24 @@ const HospitalDashboard = () => {
   });
   
   // Get hospital staff count
-  const { data: staffCount = 0 } = useQuery({
+  const { data: staffCount = 0, isLoading: isLoadingStaff } = useQuery({
     queryKey: ['hospitalStaffCount', currentHospitalId],
     queryFn: async () => {
       if (!currentHospitalId) return 0;
       
-      const { count, error } = await supabase
-        .from('hospital_staff')
-        .select('*', { count: 'exact', head: true })
-        .eq('hospital_id', currentHospitalId);
-      
-      if (error) throw error;
-      return count || 0;
+      try {
+        const { count, error } = await supabase
+          .from('hospital_staff')
+          .select('*', { count: 'exact', head: true })
+          .eq('hospital_id', currentHospitalId);
+        
+        if (error) throw error;
+        return count || 0;
+      } catch (error) {
+        console.error("Error fetching staff count:", error);
+        toast.error("Failed to fetch staff information");
+        return 0;
+      }
     },
     enabled: !!currentHospitalId
   });
@@ -187,19 +228,23 @@ const HospitalDashboard = () => {
   // Format date for display
   const formatDate = (dateString) => {
     try {
+      if (!dateString) return '';
       const date = new Date(dateString);
       return format(date, 'dd/MM/yyyy');
     } catch (error) {
-      return dateString;
+      console.error("Error formatting date:", error);
+      return dateString || '';
     }
   };
   
   // Format time for display
   const formatTime = (dateString) => {
     try {
+      if (!dateString) return '';
       const date = new Date(dateString);
       return format(date, 'hh:mm a');
     } catch (error) {
+      console.error("Error formatting time:", error);
       return '';
     }
   };
@@ -223,6 +268,33 @@ const HospitalDashboard = () => {
   ];
 
   const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042"];
+
+  // Loading state for the entire dashboard
+  const isLoading = isLoadingHospital || isLoadingResources || isLoadingPatients || 
+                    isLoadingRecords || isLoadingAppointments || isLoadingStaff;
+
+  if (isLoading) {
+    return (
+      <HospitalLayout>
+        <div className="flex justify-center items-center h-screen">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        </div>
+      </HospitalLayout>
+    );
+  }
+  
+  // If no hospital is found
+  if (!currentHospitalId && !isLoadingHospital) {
+    return (
+      <HospitalLayout>
+        <div className="flex flex-col items-center justify-center h-screen">
+          <h1 className="text-2xl font-bold mb-4">No Hospital Found</h1>
+          <p className="mb-4">You need to be associated with a hospital to view this dashboard.</p>
+          <Button onClick={() => window.location.href = '/'}>Return Home</Button>
+        </div>
+      </HospitalLayout>
+    );
+  }
 
   return (
     <HospitalLayout>
@@ -272,7 +344,7 @@ const HospitalDashboard = () => {
                 <Bed className="h-6 w-6 text-health-500" />
               </div>
               <p className="text-xs text-muted-foreground mt-2">
-                {Math.round((availableBeds / totalBeds) * 100)}% availability rate
+                {Math.round((availableBeds / (totalBeds || 1)) * 100)}% availability rate
               </p>
             </CardContent>
           </Card>
@@ -418,34 +490,42 @@ const HospitalDashboard = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Record Type</TableHead>
-                    <TableHead className="hidden md:table-cell">Diagnosis</TableHead>
-                    <TableHead className="hidden md:table-cell">Treatment</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {recentMedicalRecords.map((record) => (
-                    <TableRow key={record.id}>
-                      <TableCell>{formatDate(record.record_date)}</TableCell>
-                      <TableCell>{record.record_type}</TableCell>
-                      <TableCell className="hidden md:table-cell max-w-sm truncate">{record.diagnosis}</TableCell>
-                      <TableCell className="hidden md:table-cell max-w-sm truncate">{record.treatment}</TableCell>
-                      <TableCell className="text-right">
-                        <Button variant="outline" size="sm">
-                          View Details
-                        </Button>
-                      </TableCell>
+            {recentMedicalRecords.length > 0 ? (
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Record Type</TableHead>
+                      <TableHead className="hidden md:table-cell">Diagnosis</TableHead>
+                      <TableHead className="hidden md:table-cell">Treatment</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                  </TableHeader>
+                  <TableBody>
+                    {recentMedicalRecords.map((record) => (
+                      <TableRow key={record.id}>
+                        <TableCell>{formatDate(record.record_date)}</TableCell>
+                        <TableCell>{record.record_type || 'N/A'}</TableCell>
+                        <TableCell className="hidden md:table-cell max-w-sm truncate">{record.diagnosis || 'N/A'}</TableCell>
+                        <TableCell className="hidden md:table-cell max-w-sm truncate">{record.treatment || 'N/A'}</TableCell>
+                        <TableCell className="text-right">
+                          <Button variant="outline" size="sm">
+                            View Details
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <FileText className="mx-auto h-12 w-12 text-gray-400" />
+                <h3 className="mt-2 text-sm font-semibold text-gray-900">No recent medical records</h3>
+                <p className="mt-1 text-sm text-gray-500">Medical records will appear here once created.</p>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -461,49 +541,59 @@ const HospitalDashboard = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date & Time</TableHead>
-                    <TableHead>Patient</TableHead>
-                    <TableHead>Doctor</TableHead>
-                    <TableHead className="hidden md:table-cell">Department</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {upcomingAppointments.map((appointment) => (
-                    <TableRow key={appointment.id}>
-                      <TableCell>
-                        <div className="font-medium">{formatDate(appointment.appointment_date)}</div>
-                        <div className="text-sm text-muted-foreground">{formatTime(appointment.appointment_date)}</div>
-                      </TableCell>
-                      <TableCell>{appointment.patients?.full_name || 'Unknown'}</TableCell>
-                      <TableCell>{appointment.doctors?.full_name || 'Not assigned'}</TableCell>
-                      <TableCell className="hidden md:table-cell">{appointment.department}</TableCell>
-                      <TableCell>
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          appointment.status === "confirmed" 
-                            ? "bg-green-100 text-green-800" 
-                            : appointment.status === "pending"
-                            ? "bg-yellow-100 text-yellow-800"
-                            : "bg-gray-100 text-gray-800"
-                        }`}>
-                          {appointment.status ? (appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)) : 'Unknown'}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button variant="outline" size="sm">
-                          Manage
-                        </Button>
-                      </TableCell>
+            {upcomingAppointments.length > 0 ? (
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date & Time</TableHead>
+                      <TableHead>Patient</TableHead>
+                      <TableHead>Doctor</TableHead>
+                      <TableHead className="hidden md:table-cell">Department</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                  </TableHeader>
+                  <TableBody>
+                    {upcomingAppointments.map((appointment) => (
+                      <TableRow key={appointment.id}>
+                        <TableCell>
+                          <div className="font-medium">{formatDate(appointment?.appointment_date)}</div>
+                          <div className="text-sm text-muted-foreground">{formatTime(appointment?.appointment_date)}</div>
+                        </TableCell>
+                        <TableCell>{appointment?.patients?.full_name || 'Unknown'}</TableCell>
+                        <TableCell>{appointment?.doctors?.full_name || 'Not assigned'}</TableCell>
+                        <TableCell className="hidden md:table-cell">{appointment?.department || 'General'}</TableCell>
+                        <TableCell>
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            appointment?.status === "confirmed" 
+                              ? "bg-green-100 text-green-800" 
+                              : appointment?.status === "pending"
+                              ? "bg-yellow-100 text-yellow-800"
+                              : "bg-gray-100 text-gray-800"
+                          }`}>
+                            {appointment?.status 
+                              ? (appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)) 
+                              : 'Unknown'}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button variant="outline" size="sm">
+                            Manage
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <Calendar className="mx-auto h-12 w-12 text-gray-400" />
+                <h3 className="mt-2 text-sm font-semibold text-gray-900">No upcoming appointments</h3>
+                <p className="mt-1 text-sm text-gray-500">Scheduled appointments will appear here.</p>
+              </div>
+            )}
           </CardContent>
         </Card>
 
