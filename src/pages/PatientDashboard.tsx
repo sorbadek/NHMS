@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { 
   Card, 
@@ -222,10 +223,12 @@ const PatientDashboard = () => {
       return data.map((appointment) => {
         let doctorName = 'Assigned Doctor';
         try {
-          if (appointment.doctors && 
-              appointment.doctors !== null) {
-            const doctorFullName = appointment.doctors?.full_name;
-            doctorName = doctorFullName ? `Dr. ${doctorFullName}` : 'Assigned Doctor';
+          if (appointment.doctors && appointment.doctors !== null) {
+            // Check if doctors is an object with expected structure 
+            if (typeof appointment.doctors === 'object' && !('code' in appointment.doctors)) {
+              const doctorFullName = appointment.doctors.full_name;
+              doctorName = doctorFullName ? `Dr. ${doctorFullName}` : 'Assigned Doctor';
+            }
           }
         } catch (e) {
           console.error("Error processing doctor data:", e);
@@ -233,10 +236,12 @@ const PatientDashboard = () => {
         
         let hospitalName = 'Unknown Hospital';
         try {
-          if (appointment.hospitals && 
-              appointment.hospitals !== null) {
-            const hospitalNameValue = appointment.hospitals?.name;
-            hospitalName = hospitalNameValue || 'Unknown Hospital';
+          if (appointment.hospitals && appointment.hospitals !== null) {
+            // Check if hospitals is an object with expected structure
+            if (typeof appointment.hospitals === 'object' && !('code' in appointment.hospitals)) {
+              const hospitalNameValue = appointment.hospitals.name;
+              hospitalName = hospitalNameValue || 'Unknown Hospital';
+            }
           }
         } catch (e) {
           console.error("Error processing hospital data:", e);
@@ -289,7 +294,8 @@ const PatientDashboard = () => {
           try {
             if (prescription.doctors && 
                 prescription.doctors !== null && 
-                typeof prescription.doctors === 'object') {
+                typeof prescription.doctors === 'object' &&
+                !('code' in prescription.doctors)) {
               const fullName = prescription.doctors.full_name;
               doctorName = fullName ? `Dr. ${fullName}` : 'Unknown Doctor';
             }
@@ -301,7 +307,8 @@ const PatientDashboard = () => {
           try {
             if (prescription.hospitals && 
                 prescription.hospitals !== null && 
-                typeof prescription.hospitals === 'object') {
+                typeof prescription.hospitals === 'object' &&
+                !('code' in prescription.hospitals)) {
               const name = prescription.hospitals.name;
               hospitalName = name || 'Unknown Hospital';
             }
