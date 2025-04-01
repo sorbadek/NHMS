@@ -137,6 +137,8 @@ const Auth = () => {
       return;
     }
 
+    // The issue is here - we need to make sure user_type is one of the allowed values
+    // The database has a check constraint on the users table that limits the allowed values
     let userType = 'patient';
     
     // Check if admin key is provided and valid
