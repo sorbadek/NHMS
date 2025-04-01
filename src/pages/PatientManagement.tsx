@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import HospitalLayout from "@/components/HospitalLayout";
@@ -35,22 +34,25 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
-import { supabase, PatientRow } from "@/integrations/supabase/client";
+import { supabase, PatientRow, UserRow } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+
+interface PatientWithUser extends PatientRow {
+  users?: UserRow | null;
+}
 
 const PatientManagement = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [nationalSearchTerm, setNationalSearchTerm] = useState("");
   const [showNationalSearch, setShowNationalSearch] = useState(false);
-  const [selectedPatient, setSelectedPatient] = useState<any>(null);
+  const [selectedPatient, setSelectedPatient] = useState<PatientWithUser | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [patientToDelete, setPatientToDelete] = useState<PatientRow | null>(null);
+  const [patientToDelete, setPatientToDelete] = useState<PatientWithUser | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [showStatusDialog, setShowStatusDialog] = useState(false);
   const { user } = useAuth();
   
-  // Fetch patients from backend
   const { data: patients, isLoading: isLoadingPatients, error: patientsError, refetch: refetchPatients } = useQuery({
     queryKey: ['patients'],
     queryFn: async () => {
@@ -67,16 +69,12 @@ const PatientManagement = () => {
     },
   });
 
-  // Query to fetch national patients
   const { data: nationalPatients, isLoading: isLoadingNational, isError: isNationalError, refetch: refetchNational } = useQuery({
     queryKey: ['nationalPatients', nationalSearchTerm],
     queryFn: async () => {
-      // For this example, we'll simulate fetching from a national database
-      // In a real app, this would be an actual API call to a national health database
       const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
       await delay(1000);
       
-      // Sample data - in a real app, this would come from an actual API
       const mockNationalPatients = [
         { id: "N-2023-001", name: "Mohammed Ibrahim", dateOfBirth: "12/03/1980", nin: "20345678901", gender: "Male", phoneNumber: "08112345678", lastVisit: "15/05/2023", status: "Active" },
         { id: "N-2023-002", name: "Chioma Okafor", dateOfBirth: "07/09/1992", nin: "30456789012", gender: "Female", phoneNumber: "08223456789", lastVisit: "20/04/2023", status: "Active" },
@@ -96,7 +94,6 @@ const PatientManagement = () => {
     enabled: showNationalSearch,
   });
 
-  // Filter local patients based on search term
   const filteredPatients = patients ? patients.filter((patient: any) => {
     const patientName = patient.users?.full_name || '';
     const patientEmail = patient.users?.email || '';
@@ -109,10 +106,8 @@ const PatientManagement = () => {
            patientNationalId.includes(searchTerm);
   }) : [];
 
-  // Function to add a patient from national database to local records
   const addPatientFromNationalDb = async (patient: any) => {
     try {
-      // Check if patient already exists in local records
       const { data: existingPatients, error: checkError } = await supabase
         .from('patients')
         .select('*')
@@ -125,7 +120,6 @@ const PatientManagement = () => {
         return;
       }
 
-      // First create a user account
       const email = `${patient.nin}@nationaldb.placeholder`;
       const password = `${patient.nin}${patient.dateOfBirth.replace(/\//g, '')}`;
       
@@ -147,7 +141,6 @@ const PatientManagement = () => {
         return;
       }
       
-      // Now create the patient record
       const { error: patientError } = await supabase
         .from('patients')
         .insert([{
@@ -160,7 +153,6 @@ const PatientManagement = () => {
       
       if (patientError) throw patientError;
       
-      // Update user phone number
       if (patient.phoneNumber) {
         await supabase
           .from('users')
@@ -170,26 +162,22 @@ const PatientManagement = () => {
       
       toast.success(`Patient ${patient.name} successfully added to your records.`);
       refetchPatients();
-      
     } catch (error: any) {
       toast.error(`Error adding patient: ${error.message}`);
       console.error("Error adding patient from national database:", error);
     }
   };
 
-  // Convert date format from DD/MM/YYYY to YYYY-MM-DD
   const convertDateFormat = (dateString: string): string => {
     const [day, month, year] = dateString.split('/');
     return `${year}-${month}-${day}`;
   };
 
-  // Function to update patient status
-  const updatePatientStatus = (patient: PatientRow) => {
+  const updatePatientStatus = (patient: PatientWithUser) => {
     setSelectedPatient(patient);
     setShowStatusDialog(true);
   };
 
-  // Function to handle the actual update
   const handleStatusUpdate = async (status: string) => {
     if (!selectedPatient) return;
     
@@ -218,20 +206,17 @@ const PatientManagement = () => {
     }
   };
 
-  // Function to handle patient deletion
-  const handleDeleteClick = (patient: PatientRow) => {
+  const handleDeleteClick = (patient: PatientWithUser) => {
     setPatientToDelete(patient);
     setShowDeleteDialog(true);
   };
 
-  // Function to confirm and execute patient deletion
   const confirmDelete = async () => {
     if (!patientToDelete) return;
     
     setIsDeleting(true);
     
     try {
-      // First check if this patient has related records in other tables
       const { data: appointments, error: appointmentsError } = await supabase
         .from('appointments')
         .select('id')
@@ -245,17 +230,12 @@ const PatientManagement = () => {
         return;
       }
       
-      // Delete the patient record
       const { error: deleteError } = await supabase
         .from('patients')
         .delete()
         .eq('id', patientToDelete.id);
         
       if (deleteError) throw deleteError;
-      
-      // Delete the user account if needed (or just deactivate it)
-      // In a real app, you might want to just mark the user as inactive
-      // rather than actually delete them
       
       toast.success("Patient deleted successfully");
       refetchPatients();
@@ -269,7 +249,6 @@ const PatientManagement = () => {
     }
   };
 
-  // Calculate statistics
   const calculateStats = () => {
     if (!patients) return { total: 0, active: 0, averageAge: 0 };
     
@@ -279,7 +258,6 @@ const PatientManagement = () => {
       p.status === "active"
     ).length;
     
-    // Calculate average age
     let totalAge = 0;
     let count = 0;
     
@@ -306,7 +284,6 @@ const PatientManagement = () => {
 
   const stats = calculateStats();
   
-  // Format date for display
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'N/A';
     const date = new Date(dateString);
@@ -317,18 +294,15 @@ const PatientManagement = () => {
     });
   };
   
-  // Get patient name from user relation
-  const getPatientName = (patient: any) => {
+  const getPatientName = (patient: PatientWithUser) => {
     return patient.users?.full_name || 'Unknown';
   };
 
-  // Get patient email from user relation
-  const getPatientEmail = (patient: any) => {
+  const getPatientEmail = (patient: PatientWithUser) => {
     return patient.users?.email || 'N/A';
   };
 
-  // Get patient phone from user relation
-  const getPatientPhone = (patient: any) => {
+  const getPatientPhone = (patient: PatientWithUser) => {
     return patient.users?.phone || 'N/A';
   };
 
@@ -353,7 +327,6 @@ const PatientManagement = () => {
           </div>
         </div>
 
-        {/* National Database Search */}
         {showNationalSearch && (
           <Card>
             <CardHeader>
@@ -437,7 +410,6 @@ const PatientManagement = () => {
           </Card>
         )}
 
-        {/* Local Patients Card */}
         <Card>
           <CardHeader>
             <CardTitle>Patients Directory</CardTitle>
@@ -553,7 +525,6 @@ const PatientManagement = () => {
           </CardContent>
         </Card>
 
-        {/* Status Update Dialog */}
         <Dialog open={showStatusDialog} onOpenChange={setShowStatusDialog}>
           <DialogContent>
             <DialogHeader>
@@ -613,7 +584,6 @@ const PatientManagement = () => {
           </DialogContent>
         </Dialog>
 
-        {/* Delete Confirmation Dialog */}
         <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
           <DialogContent>
             <DialogHeader>
@@ -655,7 +625,6 @@ const PatientManagement = () => {
           </DialogContent>
         </Dialog>
 
-        {/* Quick Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
