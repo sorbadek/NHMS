@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -270,14 +271,18 @@ const StaffRegistration = () => {
       // Parse years of experience to integer
       const yearsOfExperience = formData.yearsOfExperience ? parseInt(formData.yearsOfExperience) : null;
 
+      // Ensure role_specific is one of the allowed enum values
+      // This is the key fix: Cast the string to the expected enum type
+      const roleSpecific = formData.role_specific as any;
+
       // Create hospital staff record with additional fields
       const { error: staffError } = await supabase
         .from('hospital_staff')
-        .insert([{
+        .insert({
           user_id: userId,
           hospital_id: formData.hospitalId,
           role: formData.role,
-          role_specific: formData.role_specific,
+          role_specific: roleSpecific,
           department: formData.department,
           status: 'active',
           specialization: formData.specialization,
@@ -286,7 +291,7 @@ const StaffRegistration = () => {
           years_of_experience: yearsOfExperience,
           shift_preference: formData.shiftPreference,
           certification: certifications.length > 0 ? certifications : null
-        }]);
+        });
 
       if (staffError) throw staffError;
 
