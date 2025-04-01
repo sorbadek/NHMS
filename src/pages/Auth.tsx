@@ -4,10 +4,9 @@ import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { LockIcon, UserIcon, MailIcon, ShieldIcon, Loader2, Lock, LogIn } from "lucide-react";
+import { MailIcon, LockIcon, Loader2, LogIn, ChevronRight, Info, User } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
@@ -16,16 +15,12 @@ import { useAuth } from "@/contexts/AuthContext";
 
 const Auth = () => {
   const [isLoading, setIsLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState("login");
-  const [adminKeyVisible, setAdminKeyVisible] = useState(false);
   const [formData, setFormData] = useState({
     email: "",
     password: "",
-    confirmPassword: "",
-    fullName: "",
-    adminKey: "",
     rememberMe: false
   });
+  
   const navigate = useNavigate();
   const location = useLocation();
   const from = location.state?.from?.pathname || "/";
@@ -69,10 +64,6 @@ const Auth = () => {
     setFormData(prev => ({ ...prev, rememberMe: checked }));
   };
 
-  const handleAdminKeyClick = () => {
-    setAdminKeyVisible(true);
-  };
-
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -101,34 +92,7 @@ const Auth = () => {
       // Refresh user data in the context
       await refreshUser();
       
-      // Redirect based on user type
-      if (data.user) {
-        const { data: userData, error: userError } = await supabase
-          .from('users')
-          .select('user_type')
-          .eq('id', data.user.id)
-          .single();
-        
-        if (userError) throw userError;
-        
-        switch (userData?.user_type) {
-          case 'super_admin':
-          case 'admin':
-            navigate('/admin-dashboard');
-            break;
-          case 'hospital_staff':
-            navigate('/hospital-dashboard');
-            break;
-          case 'police':
-            navigate('/police-dashboard');
-            break;
-          case 'patient':
-            navigate('/patient-dashboard');
-            break;
-          default:
-            navigate(from);
-        }
-      }
+      // Redirect now happens automatically via the auth context
       
     } catch (error: any) {
       toast.error(error.message || "Invalid credentials. Please try again.");
@@ -137,66 +101,7 @@ const Auth = () => {
     }
   };
 
-  const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!formData.email || !formData.password || !formData.fullName) {
-      toast.error("Please fill in all required fields");
-      return;
-    }
-
-    if (formData.password !== formData.confirmPassword) {
-      toast.error("Passwords do not match");
-      return;
-    }
-
-    // The issue is here - we need to make sure user_type is one of the allowed values
-    // The database has a check constraint on the users table that limits the allowed values
-    let userType = 'patient';
-    
-    // Check if admin key is provided and valid
-    if (formData.adminKey) {
-      if (formData.adminKey === "Mich_NHMS") {
-        userType = 'super_admin';
-      } else {
-        toast.error("Invalid admin key");
-        return;
-      }
-    }
-
-    setIsLoading(true);
-    
-    try {
-      const { data, error } = await supabase.auth.signUp({
-        email: formData.email,
-        password: formData.password,
-        options: {
-          data: {
-            full_name: formData.fullName,
-            user_type: userType
-          }
-        }
-      });
-
-      if (error) throw error;
-      
-      toast.success("Registration successful! Please verify your email address.");
-      
-      // If auto-confirm email is enabled, user will be signed in automatically
-      if (data.session) {
-        await refreshUser();
-        redirectBasedOnUserType();
-      } else {
-        setActiveTab("login");
-      }
-      
-    } catch (error: any) {
-      toast.error(error.message || "Registration failed. Please try again.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
+  // Animation variants
   const containerVariants = {
     hidden: { opacity: 0 },
     visible: { 
@@ -241,290 +146,117 @@ const Auth = () => {
           className="w-full max-w-md"
           variants={itemVariants}
         >
-          <Tabs 
-            value={activeTab} 
-            onValueChange={setActiveTab}
-            className="w-full"
-          >
-            <TabsList className="grid w-full grid-cols-2 mb-6">
-              <TabsTrigger value="login" className="data-[state=active]:bg-health-600 data-[state=active]:text-white">
-                <LogIn className="mr-2 h-4 w-4" />
-                Login
-              </TabsTrigger>
-              <TabsTrigger value="register" className="data-[state=active]:bg-health-600 data-[state=active]:text-white">
-                <UserIcon className="mr-2 h-4 w-4" />
-                Register
-              </TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="login">
-              <motion.div variants={itemVariants}>
-                <Card className="border-none shadow-lg">
-                  <CardHeader className="space-y-1">
-                    <CardTitle className="text-2xl font-bold">Welcome back</CardTitle>
-                    <CardDescription>
-                      Enter your credentials to access your account
-                    </CardDescription>
-                  </CardHeader>
-                  <form onSubmit={handleLogin}>
-                    <CardContent className="space-y-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="email">Email</Label>
-                        <div className="relative">
-                          <MailIcon className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                          <Input 
-                            id="email" 
-                            name="email" 
-                            type="email"
-                            placeholder="name@example.com" 
-                            className="pl-10"
-                            value={formData.email}
-                            onChange={handleChange}
-                            disabled={isLoading}
-                            required
-                          />
-                        </div>
-                      </div>
-                      
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="password">Password</Label>
-                          <Link 
-                            to="/forgot-password" 
-                            className="text-sm text-health-700 hover:text-health-900 hover:underline"
-                          >
-                            Forgot password?
-                          </Link>
-                        </div>
-                        <div className="relative">
-                          <LockIcon className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                          <Input 
-                            id="password" 
-                            name="password" 
-                            type="password" 
-                            placeholder="••••••••" 
-                            className="pl-10"
-                            value={formData.password}
-                            onChange={handleChange}
-                            disabled={isLoading}
-                            required
-                          />
-                        </div>
-                      </div>
-                      
-                      <div className="flex items-center space-x-2">
-                        <Checkbox 
-                          id="remember-me" 
-                          checked={formData.rememberMe}
-                          onCheckedChange={handleCheckboxChange}
-                          disabled={isLoading}
-                        />
-                        <Label htmlFor="remember-me" className="text-sm font-normal cursor-pointer">
-                          Remember me for 30 days
-                        </Label>
-                      </div>
-                    </CardContent>
-                    
-                    <CardFooter className="flex flex-col space-y-4">
-                      <Button 
-                        type="submit" 
-                        className="w-full bg-health-600 hover:bg-health-700 transition-all duration-300 transform hover:scale-[1.02]"
-                        disabled={isLoading}
-                      >
-                        {isLoading ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Authenticating...
-                          </>
-                        ) : "Sign in"}
-                      </Button>
-                      
-                      <div className="text-center text-sm">
-                        Don't have an account?{" "}
-                        <button 
-                          type="button"
-                          onClick={() => setActiveTab("register")}
-                          className="text-health-700 hover:text-health-900 hover:underline font-medium"
-                        >
-                          Register now
-                        </button>
-                      </div>
-                      
-                      <div className="text-center text-sm">
-                        <Link 
-                          to="/patient-register"
-                          className="text-health-700 hover:text-health-900 hover:underline font-medium"
-                        >
-                          Register as Patient
-                        </Link>
-                      </div>
-                    </CardFooter>
-                  </form>
-                </Card>
-              </motion.div>
-            </TabsContent>
-            
-            <TabsContent value="register">
-              <motion.div variants={itemVariants}>
-                <Card className="border-none shadow-lg">
-                  <CardHeader className="space-y-1">
-                    <CardTitle className="text-2xl font-bold">Create an account</CardTitle>
-                    <CardDescription>
-                      Enter your details to create a new account
-                    </CardDescription>
-                  </CardHeader>
-                  <form onSubmit={handleRegister}>
-                    <CardContent className="space-y-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="fullName">Full Name</Label>
-                        <div className="relative">
-                          <UserIcon className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                          <Input 
-                            id="fullName" 
-                            name="fullName" 
-                            placeholder="John Doe" 
-                            className="pl-10"
-                            value={formData.fullName}
-                            onChange={handleChange}
-                            disabled={isLoading}
-                            required
-                          />
-                        </div>
-                      </div>
-                      
-                      <div className="space-y-2">
-                        <Label htmlFor="register-email">Email</Label>
-                        <div className="relative">
-                          <MailIcon className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                          <Input 
-                            id="register-email" 
-                            name="email" 
-                            type="email"
-                            placeholder="name@example.com" 
-                            className="pl-10"
-                            value={formData.email}
-                            onChange={handleChange}
-                            disabled={isLoading}
-                            required
-                          />
-                        </div>
-                      </div>
-                      
-                      <div className="space-y-2">
-                        <Label htmlFor="register-password">Password</Label>
-                        <div className="relative">
-                          <LockIcon className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                          <Input 
-                            id="register-password" 
-                            name="password" 
-                            type="password" 
-                            placeholder="••••••••" 
-                            className="pl-10"
-                            value={formData.password}
-                            onChange={handleChange}
-                            disabled={isLoading}
-                            required
-                          />
-                        </div>
-                      </div>
-                      
-                      <div className="space-y-2">
-                        <Label htmlFor="confirmPassword">Confirm Password</Label>
-                        <div className="relative">
-                          <LockIcon className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                          <Input 
-                            id="confirmPassword" 
-                            name="confirmPassword" 
-                            type="password" 
-                            placeholder="••••••••" 
-                            className="pl-10"
-                            value={formData.confirmPassword}
-                            onChange={handleChange}
-                            disabled={isLoading}
-                            required
-                          />
-                        </div>
-                      </div>
-                      
-                      {adminKeyVisible && (
-                        <motion.div 
-                          className="space-y-2"
-                          initial={{ opacity: 0, height: 0 }}
-                          animate={{ opacity: 1, height: "auto" }}
-                          transition={{ duration: 0.3 }}
-                        >
-                          <Label htmlFor="adminKey">Admin Key</Label>
-                          <div className="relative">
-                            <ShieldIcon className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                            <Input 
-                              id="adminKey" 
-                              name="adminKey" 
-                              type="password" 
-                              placeholder="Enter admin key" 
-                              className="pl-10"
-                              value={formData.adminKey}
-                              onChange={handleChange}
-                              disabled={isLoading}
-                            />
-                          </div>
-                        </motion.div>
-                      )}
-                      
-                      {!adminKeyVisible && (
-                        <div className="flex justify-end">
+          <Card className="border-none shadow-lg">
+            <CardHeader className="space-y-1">
+              <CardTitle className="text-2xl font-bold">Welcome back</CardTitle>
+              <CardDescription>
+                Enter your credentials to access your account
+              </CardDescription>
+            </CardHeader>
+            <form onSubmit={handleLogin}>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <div className="relative">
+                    <MailIcon className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                    <Input 
+                      id="email" 
+                      name="email" 
+                      type="email"
+                      placeholder="name@example.com" 
+                      className="pl-10"
+                      value={formData.email}
+                      onChange={handleChange}
+                      disabled={isLoading}
+                      required
+                    />
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="password">Password</Label>
+                    <Link 
+                      to="/forgot-password" 
+                      className="text-sm text-health-700 hover:text-health-900 hover:underline"
+                    >
+                      Forgot password?
+                    </Link>
+                  </div>
+                  <div className="relative">
+                    <LockIcon className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                    <Input 
+                      id="password" 
+                      name="password" 
+                      type="password" 
+                      placeholder="••••••••" 
+                      className="pl-10"
+                      value={formData.password}
+                      onChange={handleChange}
+                      disabled={isLoading}
+                      required
+                    />
+                  </div>
+                </div>
+                
+                <div className="flex items-center space-x-2">
+                  <Checkbox 
+                    id="remember-me" 
+                    checked={formData.rememberMe}
+                    onCheckedChange={handleCheckboxChange}
+                    disabled={isLoading}
+                  />
+                  <Label htmlFor="remember-me" className="text-sm font-normal cursor-pointer">
+                    Remember me for 30 days
+                  </Label>
+                </div>
+              </CardContent>
+              
+              <CardFooter className="flex flex-col space-y-4">
+                <Button 
+                  type="submit" 
+                  className="w-full bg-health-600 hover:bg-health-700 transition-all duration-300 transform hover:scale-[1.02]"
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Authenticating...
+                    </>
+                  ) : (
+                    <>
+                      <LogIn className="mr-2 h-4 w-4" />
+                      Sign in
+                    </>
+                  )}
+                </Button>
+                
+                <div className="p-4 bg-blue-50 rounded-md border border-blue-200">
+                  <div className="flex items-start">
+                    <Info className="h-5 w-5 text-blue-500 mr-3 mt-0.5" />
+                    <div>
+                      <h4 className="text-sm font-medium text-blue-800">New user?</h4>
+                      <p className="text-sm text-blue-600 mt-1">
+                        Create your account to access health services
+                      </p>
+                      <div className="mt-3">
+                        <Link to="/patient-register">
                           <Button 
-                            type="button" 
-                            variant="ghost" 
-                            size="sm"
-                            onClick={handleAdminKeyClick}
-                            className="text-xs text-muted-foreground hover:text-health-700"
+                            className="w-full bg-white border border-blue-300 text-blue-700 hover:bg-blue-50" 
+                            variant="outline"
                           >
-                            <Lock className="mr-1 h-3 w-3" />
-                            Admin
+                            <User className="mr-2 h-4 w-4" />
+                            Register as Patient
+                            <ChevronRight className="h-4 w-4 ml-2" />
                           </Button>
-                        </div>
-                      )}
-                    </CardContent>
-                    
-                    <CardFooter className="flex flex-col space-y-4">
-                      <Button 
-                        type="submit" 
-                        className="w-full bg-health-600 hover:bg-health-700 transition-all duration-300 transform hover:scale-[1.02]"
-                        disabled={isLoading}
-                      >
-                        {isLoading ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Creating account...
-                          </>
-                        ) : "Sign up"}
-                      </Button>
-                      
-                      <div className="text-center text-sm">
-                        Already have an account?{" "}
-                        <button 
-                          type="button"
-                          onClick={() => setActiveTab("login")}
-                          className="text-health-700 hover:text-health-900 hover:underline font-medium"
-                        >
-                          Sign in
-                        </button>
-                      </div>
-                      
-                      <div className="text-center text-sm">
-                        <Link 
-                          to="/patient-register"
-                          className="text-health-700 hover:text-health-900 hover:underline font-medium"
-                        >
-                          Register as Patient
                         </Link>
                       </div>
-                    </CardFooter>
-                  </form>
-                </Card>
-              </motion.div>
-            </TabsContent>
-          </Tabs>
+                    </div>
+                  </div>
+                </div>
+              </CardFooter>
+            </form>
+          </Card>
         </motion.div>
       </main>
       

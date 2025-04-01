@@ -1,407 +1,402 @@
 
-import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { useToast } from "@/hooks/use-toast";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { LockIcon, UserIcon, Loader2, ChevronLeft, CalendarIcon, Phone } from "lucide-react";
+import { CalendarIcon, Loader2, UserPlus, ChevronLeft } from "lucide-react";
+import { Calendar } from "@/components/ui/calendar";
+import { format } from "date-fns";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/contexts/AuthContext";
 import Footer from "@/components/Footer";
+import Navbar from "@/components/Navbar";
+import { cn } from "@/lib/utils";
+import { motion } from "framer-motion";
 
 const PatientRegister = () => {
+  const navigate = useNavigate();
+  const [date, setDate] = useState<Date | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     fullName: "",
     email: "",
-    national_id: "",
     phone: "",
     password: "",
     confirmPassword: "",
+    nationalId: "",
     gender: "",
-    dob: "",
     bloodType: "",
     allergies: "",
-    emergency_contact_name: "",
-    emergency_contact_phone: ""
+    emergencyContactName: "",
+    emergencyContactPhone: "",
   });
-  const { toast } = useToast();
-  const navigate = useNavigate();
-  const { user, refreshUser } = useAuth();
 
-  // Check if user is already logged in
-  useEffect(() => {
-    if (user) {
-      if (user.user_type === 'patient') {
-        navigate('/patient-dashboard');
-      } else {
-        navigate('/auth');
-      }
-    }
-  }, [user, navigate]);
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleSelectChange = (name: string, value: string) => {
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Validation
-    if (!formData.fullName || !formData.email || !formData.password) {
-      toast({
-        title: "Validation Error",
-        description: "Please fill in all required fields",
-        variant: "destructive"
-      });
+
+    if (!formData.email || !formData.fullName || !formData.password) {
+      toast.error("Please fill in all required fields");
       return;
     }
 
     if (formData.password !== formData.confirmPassword) {
-      toast({
-        title: "Password Error",
-        description: "Passwords do not match",
-        variant: "destructive"
-      });
+      toast.error("Passwords do not match");
+      return;
+    }
+
+    if (!date) {
+      toast.error("Please select your date of birth");
       return;
     }
 
     setIsLoading(true);
-    
+
     try {
-      // Register user with Supabase Auth
-      const { data, error } = await supabase.auth.signUp({
+      // Step 1: Sign up with Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
         options: {
           data: {
             full_name: formData.fullName,
-            user_type: "patient",
+            user_type: "patient" // Important: set user type as patient
           }
         }
       });
 
-      if (error) throw error;
+      if (authError) throw new Error(authError.message);
 
-      if (data.user) {
-        // Create patient record
-        const { error: patientError } = await supabase
-          .from('patients')
-          .insert([{
-            user_id: data.user.id,
-            national_id: formData.national_id,
-            gender: formData.gender,
-            date_of_birth: formData.dob,
-            blood_type: formData.bloodType,
-            allergies: formData.allergies,
-            emergency_contact_name: formData.emergency_contact_name,
-            emergency_contact_phone: formData.emergency_contact_phone,
-            status: 'active'
-          }]);
+      if (!authData.user) {
+        throw new Error("Failed to create user account");
+      }
 
-        if (patientError) {
-          console.error("Error creating patient record:", patientError);
-          throw patientError;
-        }
-
-        // Update users table with phone number
-        if (formData.phone) {
-          const { error: userUpdateError } = await supabase
-            .from('users')
-            .update({ phone: formData.phone })
-            .eq('id', data.user.id);
-
-          if (userUpdateError) {
-            console.error("Error updating user phone:", userUpdateError);
-          }
-        }
-
-        toast({
-          title: "Registration Successful",
-          description: "Your account has been created. Please check your email for verification.",
+      // Step 2: Create patient profile
+      const { error: patientError } = await supabase
+        .from("patients")
+        .insert({
+          user_id: authData.user.id,
+          full_name: formData.fullName,
+          date_of_birth: date.toISOString().substring(0, 10),
+          gender: formData.gender,
+          blood_type: formData.bloodType,
+          allergies: formData.allergies,
+          emergency_contact_name: formData.emergencyContactName,
+          emergency_contact_phone: formData.emergencyContactPhone,
+          national_id: formData.nationalId,
+          status: "active",
         });
-        
-        // Refresh user data in context
-        await refreshUser();
-        
-        navigate("/patient-login");
+
+      if (patientError) throw new Error(patientError.message);
+
+      toast.success("Registration successful! Please check your email for verification");
+      
+      // If email confirmation is disabled in the Supabase project settings,
+      // the user will be automatically logged in
+      if (authData.session) {
+        navigate("/patient-dashboard");
+      } else {
+        navigate("/auth");
       }
     } catch (error: any) {
-      toast({
-        title: "Registration Failed",
-        description: error.message || "An error occurred during registration",
-        variant: "destructive"
-      });
+      toast.error(`Registration failed: ${error.message}`);
     } finally {
       setIsLoading(false);
     }
   };
 
-  return (
-    <div className="min-h-screen bg-background flex flex-col">
-      <header className="py-4 border-b">
-        <div className="container">
-          <Link to="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-health-600 text-white flex items-center justify-center font-bold">
-              N
-            </div>
-            <span className="font-semibold text-lg">NHMS Portal</span>
-          </Link>
-        </div>
-      </header>
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: {
+        duration: 0.3,
+        when: "beforeChildren",
+        staggerChildren: 0.1,
+      },
+    },
+  };
 
-      <main className="flex-1 flex items-center justify-center p-4 py-8">
-        <Card className="w-full max-w-lg shadow-lg">
-          <CardHeader className="space-y-1">
-            <div className="flex items-center gap-2">
-              <Link to="/patient-login" className="text-health-600 hover:text-health-700">
-                <ChevronLeft className="h-4 w-4" />
-              </Link>
-              <CardTitle className="text-2xl font-bold">Patient Registration</CardTitle>
-            </div>
-            <CardDescription>
-              Create your account to access health services
-            </CardDescription>
-          </CardHeader>
+  const itemVariants = {
+    hidden: { y: 20, opacity: 0 },
+    visible: {
+      y: 0,
+      opacity: 1,
+      transition: { duration: 0.3 },
+    },
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      <Navbar />
+      <main className="flex-grow py-8 px-4">
+        <motion.div 
+          className="max-w-2xl mx-auto"
+          initial="hidden"
+          animate="visible"
+          variants={containerVariants}
+        >
+          <motion.div variants={itemVariants} className="mb-8">
+            <Button 
+              variant="ghost" 
+              onClick={() => navigate(-1)}
+              className="mb-4"
+            >
+              <ChevronLeft className="mr-2 h-4 w-4" />
+              Back
+            </Button>
+            <h1 className="text-3xl font-bold text-center">Patient Registration</h1>
+            <p className="text-gray-600 text-center mt-2">
+              Create your patient account to access healthcare services
+            </p>
+          </motion.div>
           
-          <form onSubmit={handleSubmit}>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="fullName">Full Name</Label>
-                <div className="relative">
-                  <UserIcon className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                  <Input 
-                    id="fullName" 
-                    name="fullName" 
-                    placeholder="John Doe" 
-                    className="pl-10"
+          <Card className="border-none shadow-lg">
+            <CardHeader>
+              <CardTitle>Personal Information</CardTitle>
+              <CardDescription>
+                Please fill in your personal details to register
+              </CardDescription>
+            </CardHeader>
+            
+            <form onSubmit={handleSubmit}>
+              <CardContent className="space-y-6">
+                <motion.div variants={itemVariants} className="space-y-2">
+                  <Label htmlFor="fullName">Full Name*</Label>
+                  <Input
+                    id="fullName"
+                    name="fullName"
                     value={formData.fullName}
                     onChange={handleChange}
-                    disabled={isLoading}
+                    placeholder="John Doe"
                     required
                   />
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input 
-                    id="email" 
-                    name="email" 
-                    type="email" 
-                    placeholder="name@example.com" 
-                    value={formData.email}
-                    onChange={handleChange}
-                    disabled={isLoading}
-                    required
-                  />
-                </div>
+                </motion.div>
                 
-                <div className="space-y-2">
-                  <Label htmlFor="national_id">National ID Number</Label>
-                  <Input 
-                    id="national_id" 
-                    name="national_id" 
-                    placeholder="12345678" 
-                    value={formData.national_id}
-                    onChange={handleChange}
-                    disabled={isLoading}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Phone Number</Label>
-                  <div className="relative">
-                    <Phone className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input 
-                      id="phone" 
-                      name="phone" 
-                      placeholder="+1234567890" 
-                      className="pl-10"
+                <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email*</Label>
+                    <Input
+                      id="email"
+                      name="email"
+                      type="email"
+                      value={formData.email}
+                      onChange={handleChange}
+                      placeholder="john@example.com"
+                      required
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="phone">Phone Number</Label>
+                    <Input
+                      id="phone"
+                      name="phone"
                       value={formData.phone}
                       onChange={handleChange}
-                      disabled={isLoading}
+                      placeholder="+234 800 123 4567"
                     />
                   </div>
-                </div>
+                </motion.div>
                 
-                <div className="space-y-2">
-                  <Label htmlFor="dob">Date of Birth</Label>
-                  <div className="relative">
-                    <CalendarIcon className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input 
-                      id="dob" 
-                      name="dob" 
-                      type="date" 
-                      className="pl-10"
-                      value={formData.dob}
-                      onChange={handleChange}
-                      disabled={isLoading}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="gender">Gender</Label>
-                  <Select 
-                    value={formData.gender} 
-                    onValueChange={(value) => handleSelectChange("gender", value)}
-                    disabled={isLoading}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select gender" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="male">Male</SelectItem>
-                      <SelectItem value="female">Female</SelectItem>
-                      <SelectItem value="other">Other</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="bloodType">Blood Type</Label>
-                  <Select 
-                    value={formData.bloodType} 
-                    onValueChange={(value) => handleSelectChange("bloodType", value)}
-                    disabled={isLoading}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select blood type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="A+">A+</SelectItem>
-                      <SelectItem value="A-">A-</SelectItem>
-                      <SelectItem value="B+">B+</SelectItem>
-                      <SelectItem value="B-">B-</SelectItem>
-                      <SelectItem value="AB+">AB+</SelectItem>
-                      <SelectItem value="AB-">AB-</SelectItem>
-                      <SelectItem value="O+">O+</SelectItem>
-                      <SelectItem value="O-">O-</SelectItem>
-                      <SelectItem value="unknown">Unknown</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="allergies">Allergies (optional)</Label>
-                <Input 
-                  id="allergies" 
-                  name="allergies" 
-                  placeholder="List any allergies" 
-                  value={formData.allergies}
-                  onChange={handleChange}
-                  disabled={isLoading}
-                />
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="emergency_contact_name">Emergency Contact Name</Label>
-                  <Input 
-                    id="emergency_contact_name" 
-                    name="emergency_contact_name" 
-                    placeholder="Next of kin" 
-                    value={formData.emergency_contact_name}
-                    onChange={handleChange}
-                    disabled={isLoading}
-                  />
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="emergency_contact_phone">Emergency Contact Number</Label>
-                  <Input 
-                    id="emergency_contact_phone" 
-                    name="emergency_contact_phone" 
-                    placeholder="+1234567890" 
-                    value={formData.emergency_contact_phone}
-                    onChange={handleChange}
-                    disabled={isLoading}
-                  />
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="password">Password</Label>
-                  <div className="relative">
-                    <LockIcon className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input 
-                      id="password" 
-                      name="password" 
-                      type="password" 
-                      placeholder="••••••••" 
-                      className="pl-10"
+                <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="password">Password*</Label>
+                    <Input
+                      id="password"
+                      name="password"
+                      type="password"
                       value={formData.password}
                       onChange={handleChange}
-                      disabled={isLoading}
                       required
                     />
                   </div>
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="confirmPassword">Confirm Password</Label>
-                  <div className="relative">
-                    <LockIcon className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input 
-                      id="confirmPassword" 
-                      name="confirmPassword" 
-                      type="password" 
-                      placeholder="••••••••" 
-                      className="pl-10"
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="confirmPassword">Confirm Password*</Label>
+                    <Input
+                      id="confirmPassword"
+                      name="confirmPassword"
+                      type="password"
                       value={formData.confirmPassword}
                       onChange={handleChange}
-                      disabled={isLoading}
                       required
                     />
                   </div>
-                </div>
-              </div>
-            </CardContent>
-            
-            <CardFooter className="flex flex-col space-y-4">
-              <Button 
-                type="submit" 
-                className="w-full bg-health-600 hover:bg-health-700"
-                disabled={isLoading}
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Creating Account...
-                  </>
-                ) : "Create Account"}
-              </Button>
+                </motion.div>
+                
+                <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="dob">Date of Birth*</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant={"outline"}
+                          className={cn(
+                            "w-full justify-start text-left font-normal",
+                            !date && "text-muted-foreground"
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {date ? format(date, "PPP") : <span>Pick a date</span>}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0">
+                        <Calendar
+                          mode="single"
+                          selected={date}
+                          onSelect={setDate}
+                          initialFocus
+                          captionLayout="dropdown-buttons"
+                          fromYear={1920}
+                          toYear={new Date().getFullYear()}
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="nationalId">National ID Number</Label>
+                    <Input
+                      id="nationalId"
+                      name="nationalId"
+                      value={formData.nationalId}
+                      onChange={handleChange}
+                      placeholder="ID number"
+                    />
+                  </div>
+                </motion.div>
+                
+                <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="gender">Gender</Label>
+                    <Select
+                      value={formData.gender}
+                      onValueChange={(value) => handleSelectChange("gender", value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select gender" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="male">Male</SelectItem>
+                        <SelectItem value="female">Female</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="bloodType">Blood Type</Label>
+                    <Select
+                      value={formData.bloodType}
+                      onValueChange={(value) => handleSelectChange("bloodType", value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select blood type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="A+">A+</SelectItem>
+                        <SelectItem value="A-">A-</SelectItem>
+                        <SelectItem value="B+">B+</SelectItem>
+                        <SelectItem value="B-">B-</SelectItem>
+                        <SelectItem value="AB+">AB+</SelectItem>
+                        <SelectItem value="AB-">AB-</SelectItem>
+                        <SelectItem value="O+">O+</SelectItem>
+                        <SelectItem value="O-">O-</SelectItem>
+                        <SelectItem value="unknown">Unknown</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </motion.div>
+                
+                <motion.div variants={itemVariants} className="space-y-2">
+                  <Label htmlFor="allergies">Allergies</Label>
+                  <Input
+                    id="allergies"
+                    name="allergies"
+                    value={formData.allergies}
+                    onChange={handleChange}
+                    placeholder="List any allergies, or type 'None'"
+                  />
+                </motion.div>
+                
+                <motion.hr variants={itemVariants} className="my-6" />
+                
+                <motion.h3 variants={itemVariants} className="text-lg font-medium">Emergency Contact</motion.h3>
+                
+                <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="emergencyContactName">Contact Name</Label>
+                    <Input
+                      id="emergencyContactName"
+                      name="emergencyContactName"
+                      value={formData.emergencyContactName}
+                      onChange={handleChange}
+                      placeholder="Emergency contact name"
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="emergencyContactPhone">Contact Phone</Label>
+                    <Input
+                      id="emergencyContactPhone"
+                      name="emergencyContactPhone"
+                      value={formData.emergencyContactPhone}
+                      onChange={handleChange}
+                      placeholder="Emergency contact phone"
+                    />
+                  </div>
+                </motion.div>
+              </CardContent>
               
-              <div className="text-center text-sm">
-                Already have an account?{" "}
-                <Link 
-                  to="/patient-login" 
-                  className="text-health-700 hover:text-health-900 hover:underline font-medium"
-                >
-                  Sign in
-                </Link>
-              </div>
-            </CardFooter>
-          </form>
-        </Card>
+              <CardFooter className="flex flex-col space-y-4">
+                <motion.div variants={itemVariants} className="w-full">
+                  <Button
+                    type="submit"
+                    className="w-full bg-health-600 hover:bg-health-700"
+                    disabled={isLoading}
+                  >
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Registering...
+                      </>
+                    ) : (
+                      <>
+                        <UserPlus className="mr-2 h-4 w-4" />
+                        Register as Patient
+                      </>
+                    )}
+                  </Button>
+                </motion.div>
+                
+                <motion.p variants={itemVariants} className="text-center text-sm text-gray-500">
+                  Already have an account?{" "}
+                  <Button 
+                    variant="link" 
+                    className="p-0 h-auto font-medium text-health-600 hover:text-health-700"
+                    onClick={() => navigate("/auth")}
+                  >
+                    Sign in
+                  </Button>
+                </motion.p>
+              </CardFooter>
+            </form>
+          </Card>
+        </motion.div>
       </main>
-
       <Footer />
     </div>
   );

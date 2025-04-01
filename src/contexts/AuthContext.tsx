@@ -54,7 +54,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       async (event, session) => {
         setIsLoading(true);
         if (session) {
-          // Fetch additional user data on auth state change
+          // Defer fetching additional user data to avoid supabase deadlocks
           setTimeout(() => {
             refreshUser().finally(() => setIsLoading(false));
           }, 0);
@@ -130,20 +130,20 @@ export const ProtectedRoute = ({ children, allowedRoles = [] }: ProtectedRoutePr
   }
 
   if (allowedRoles.length > 0 && userType && !allowedRoles.includes(userType)) {
-    // Redirect if user doesn't have the required role
-    // Redirect to appropriate dashboard based on user type
-    if (userType === 'patient') {
-      return <Navigate to="/patient-dashboard" replace />;
-    } else if (userType === 'hospital_staff') {
-      return <Navigate to="/hospital-dashboard" replace />;
-    } else if (userType === 'police') {
-      return <Navigate to="/police-dashboard" replace />;
-    } else if (userType === 'admin' || userType === 'super_admin') {
-      return <Navigate to="/admin-dashboard" replace />;
+    // Redirect based on user type if they don't have the required role
+    switch (userType) {
+      case 'patient':
+        return <Navigate to="/patient-dashboard" replace />;
+      case 'hospital_staff':
+        return <Navigate to="/hospital-dashboard" replace />;
+      case 'police':
+        return <Navigate to="/police-dashboard" replace />;
+      case 'admin':
+      case 'super_admin':
+        return <Navigate to="/admin-dashboard" replace />;
+      default:
+        return <Navigate to="/auth" replace />;
     }
-    
-    // Fallback
-    return <Navigate to="/auth" replace />;
   }
 
   return <>{children}</>;

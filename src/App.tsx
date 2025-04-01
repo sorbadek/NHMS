@@ -65,11 +65,23 @@ const App = () => (
           <Route path="/faq" element={<FAQ />} />
           <Route path="/support" element={<Support />} />
           
-          {/* Registration routes */}
+          {/* Hospital Registration - Publicly available */}
           <Route path="/hospital-registration" element={<HospitalRegistration />} />
           <Route path="/police-registration" element={<PoliceRegistration />} />
-          <Route path="/staff-registration" element={<StaffRegistration />} />
-          <Route path="/officer-registration" element={<OfficerRegistration />} />
+          
+          {/* Staff Registration - Only accessible by admins & hospital staff admins */}
+          <Route path="/staff-registration" element={
+            <ProtectedRoute allowedRoles={['admin', 'super_admin', 'hospital_staff']}>
+              <StaffRegistration />
+            </ProtectedRoute>
+          } />
+          
+          {/* Officer Registration - Only accessible by admins & police admins */}
+          <Route path="/officer-registration" element={
+            <ProtectedRoute allowedRoles={['admin', 'super_admin', 'police']}>
+              <OfficerRegistration />
+            </ProtectedRoute>
+          } />
           
           {/* Protected routes - Hospital */}
           <Route path="/hospital-dashboard" element={
