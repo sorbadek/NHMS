@@ -1,5 +1,6 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import HospitalLayout from "@/components/HospitalLayout";
 import { 
   Card, 
@@ -28,109 +29,307 @@ import {
   Calendar,
   Users,
   RefreshCcw,
-  UploadCloud
+  UploadCloud,
+  Loader2
 } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
-import { useQuery } from "@tanstack/react-query";
-
-// Mock function to simulate fetching patients from national database
-const fetchNationalPatients = async (searchQuery = "") => {
-  // Simulate network request
-  await new Promise(resolve => setTimeout(resolve, 1500));
-  
-  // Mock national database patients
-  const nationalPatients = [
-    { id: "N-2023-001", name: "Mohammed Ibrahim", dateOfBirth: "12/03/1980", nin: "20345678901", gender: "Male", phoneNumber: "08112345678", lastVisit: "15/05/2023", status: "Active" },
-    { id: "N-2023-002", name: "Chioma Okafor", dateOfBirth: "07/09/1992", nin: "30456789012", gender: "Female", phoneNumber: "08223456789", lastVisit: "20/04/2023", status: "Active" },
-    { id: "N-2023-003", name: "Emeka Eze", dateOfBirth: "23/11/1975", nin: "40567890123", gender: "Male", phoneNumber: "09034567890", lastVisit: "05/06/2023", status: "Inactive" },
-    { id: "N-2023-004", name: "Aisha Mohammed", dateOfBirth: "15/08/1988", nin: "50678901234", gender: "Female", phoneNumber: "07045678901", lastVisit: "10/06/2023", status: "Active" },
-    { id: "N-2023-005", name: "Oluwaseun Adeleke", dateOfBirth: "30/01/1990", nin: "60789012345", gender: "Male", phoneNumber: "08056789012", lastVisit: "01/06/2023", status: "Active" },
-  ];
-  
-  if (!searchQuery) return nationalPatients;
-  
-  return nationalPatients.filter(patient => 
-    patient.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    patient.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    patient.nin.includes(searchQuery)
-  );
-};
+import { supabase, PatientRow } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 const PatientManagement = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [nationalSearchTerm, setNationalSearchTerm] = useState("");
   const [showNationalSearch, setShowNationalSearch] = useState(false);
-  const [selectedPatient, setSelectedPatient] = useState(null);
+  const [selectedPatient, setSelectedPatient] = useState<any>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [patientToDelete, setPatientToDelete] = useState<PatientRow | null>(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [showStatusDialog, setShowStatusDialog] = useState(false);
+  const { user } = useAuth();
   
-  // Local patients data
-  const [patients, setPatients] = useState([
-    { id: "P-2023-001", name: "John Doe", dateOfBirth: "15/05/1985", nin: "12345678901", gender: "Male", phoneNumber: "08012345678", lastVisit: "10/06/2023", status: "Active" },
-    { id: "P-2023-002", name: "Jane Smith", dateOfBirth: "22/11/1990", nin: "23456789012", gender: "Female", phoneNumber: "08023456789", lastVisit: "05/06/2023", status: "Active" },
-    { id: "P-2023-003", name: "Robert Johnson", dateOfBirth: "08/03/1978", nin: "34567890123", gender: "Male", phoneNumber: "08034567890", lastVisit: "01/06/2023", status: "Active" },
-    { id: "P-2023-004", name: "Sarah Williams", dateOfBirth: "19/09/1995", nin: "45678901234", gender: "Female", phoneNumber: "08045678901", lastVisit: "15/05/2023", status: "Inactive" },
-    { id: "P-2023-005", name: "Michael Brown", dateOfBirth: "30/12/1982", nin: "56789012345", gender: "Male", phoneNumber: "08056789012", lastVisit: "20/05/2023", status: "Active" },
-    { id: "P-2023-006", name: "Emily Davis", dateOfBirth: "25/07/1988", nin: "67890123456", gender: "Female", phoneNumber: "08067890123", lastVisit: "18/05/2023", status: "Active" },
-    { id: "P-2023-007", name: "Daniel Wilson", dateOfBirth: "14/02/1975", nin: "78901234567", gender: "Male", phoneNumber: "08078901234", lastVisit: "12/05/2023", status: "Inactive" },
-    { id: "P-2023-008", name: "Olivia Taylor", dateOfBirth: "03/06/1992", nin: "89012345678", gender: "Female", phoneNumber: "08089012345", lastVisit: "08/05/2023", status: "Active" },
-  ]);
+  // Fetch patients from backend
+  const { data: patients, isLoading: isLoadingPatients, error: patientsError, refetch: refetchPatients } = useQuery({
+    queryKey: ['patients'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('patients')
+        .select(`
+          *,
+          users:user_id(full_name, email, phone)
+        `)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data || [];
+    },
+  });
 
   // Query to fetch national patients
-  const { data: nationalPatients, isLoading, isError, refetch } = useQuery({
+  const { data: nationalPatients, isLoading: isLoadingNational, isError: isNationalError, refetch: refetchNational } = useQuery({
     queryKey: ['nationalPatients', nationalSearchTerm],
-    queryFn: () => fetchNationalPatients(nationalSearchTerm),
+    queryFn: async () => {
+      // For this example, we'll simulate fetching from a national database
+      // In a real app, this would be an actual API call to a national health database
+      const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+      await delay(1000);
+      
+      // Sample data - in a real app, this would come from an actual API
+      const mockNationalPatients = [
+        { id: "N-2023-001", name: "Mohammed Ibrahim", dateOfBirth: "12/03/1980", nin: "20345678901", gender: "Male", phoneNumber: "08112345678", lastVisit: "15/05/2023", status: "Active" },
+        { id: "N-2023-002", name: "Chioma Okafor", dateOfBirth: "07/09/1992", nin: "30456789012", gender: "Female", phoneNumber: "08223456789", lastVisit: "20/04/2023", status: "Active" },
+        { id: "N-2023-003", name: "Emeka Eze", dateOfBirth: "23/11/1975", nin: "40567890123", gender: "Male", phoneNumber: "09034567890", lastVisit: "05/06/2023", status: "Inactive" },
+        { id: "N-2023-004", name: "Aisha Mohammed", dateOfBirth: "15/08/1988", nin: "50678901234", gender: "Female", phoneNumber: "07045678901", lastVisit: "10/06/2023", status: "Active" },
+        { id: "N-2023-005", name: "Oluwaseun Adeleke", dateOfBirth: "30/01/1990", nin: "60789012345", gender: "Male", phoneNumber: "08056789012", lastVisit: "01/06/2023", status: "Active" },
+      ];
+      
+      if (!nationalSearchTerm) return mockNationalPatients;
+      
+      return mockNationalPatients.filter(patient => 
+        patient.name.toLowerCase().includes(nationalSearchTerm.toLowerCase()) ||
+        patient.id.toLowerCase().includes(nationalSearchTerm.toLowerCase()) ||
+        patient.nin.includes(nationalSearchTerm)
+      );
+    },
     enabled: showNationalSearch,
   });
 
   // Filter local patients based on search term
-  const filteredPatients = patients.filter(patient => 
-    patient.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    patient.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    patient.nin.includes(searchTerm)
-  );
+  const filteredPatients = patients ? patients.filter((patient: any) => {
+    const patientName = patient.users?.full_name || '';
+    const patientEmail = patient.users?.email || '';
+    const patientPhone = patient.users?.phone || '';
+    const patientNationalId = patient.national_id || '';
+    
+    return patientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+           patientEmail.toLowerCase().includes(searchTerm.toLowerCase()) ||
+           patientPhone.includes(searchTerm) ||
+           patientNationalId.includes(searchTerm);
+  }) : [];
 
   // Function to add a patient from national database to local records
-  const addPatientFromNationalDb = (patient) => {
-    // Check if patient already exists in local records
-    const exists = patients.some(p => p.nin === patient.nin);
-    
-    if (exists) {
-      toast.error(`Patient ${patient.name} already exists in your records.`);
-      return;
+  const addPatientFromNationalDb = async (patient: any) => {
+    try {
+      // Check if patient already exists in local records
+      const { data: existingPatients, error: checkError } = await supabase
+        .from('patients')
+        .select('*')
+        .eq('national_id', patient.nin);
+      
+      if (checkError) throw checkError;
+      
+      if (existingPatients && existingPatients.length > 0) {
+        toast.error(`Patient ${patient.name} already exists in your records.`);
+        return;
+      }
+
+      // First create a user account
+      const email = `${patient.nin}@nationaldb.placeholder`;
+      const password = `${patient.nin}${patient.dateOfBirth.replace(/\//g, '')}`;
+      
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            full_name: patient.name,
+            user_type: 'patient'
+          }
+        }
+      });
+      
+      if (authError) throw authError;
+      
+      if (!authData.user) {
+        toast.error("Failed to create user account");
+        return;
+      }
+      
+      // Now create the patient record
+      const { error: patientError } = await supabase
+        .from('patients')
+        .insert([{
+          user_id: authData.user.id,
+          national_id: patient.nin,
+          gender: patient.gender.toLowerCase(),
+          date_of_birth: convertDateFormat(patient.dateOfBirth),
+          status: patient.status.toLowerCase(),
+        }]);
+      
+      if (patientError) throw patientError;
+      
+      // Update user phone number
+      if (patient.phoneNumber) {
+        await supabase
+          .from('users')
+          .update({ phone: patient.phoneNumber })
+          .eq('id', authData.user.id);
+      }
+      
+      toast.success(`Patient ${patient.name} successfully added to your records.`);
+      refetchPatients();
+      
+    } catch (error: any) {
+      toast.error(`Error adding patient: ${error.message}`);
+      console.error("Error adding patient from national database:", error);
     }
-
-    // Generate a new local ID for the patient
-    const newPatient = {
-      ...patient,
-      id: `P-${new Date().getFullYear()}-${(patients.length + 1).toString().padStart(3, '0')}`,
-      lastVisit: new Date().toLocaleDateString('en-GB'), // Update last visit to today
-    };
-
-    setPatients([...patients, newPatient]);
-    toast.success(`Patient ${patient.name} successfully added to your records.`);
   };
 
-  // Function to update patient status in national database
-  const updatePatientStatus = (patient) => {
+  // Convert date format from DD/MM/YYYY to YYYY-MM-DD
+  const convertDateFormat = (dateString: string): string => {
+    const [day, month, year] = dateString.split('/');
+    return `${year}-${month}-${day}`;
+  };
+
+  // Function to update patient status
+  const updatePatientStatus = (patient: PatientRow) => {
     setSelectedPatient(patient);
+    setShowStatusDialog(true);
   };
 
   // Function to handle the actual update
-  const handleStatusUpdate = (patient, newStatus) => {
-    // In a real app, this would send an update to the national database API
-    console.log(`Updating patient ${patient.name} status to ${newStatus} in national database`);
+  const handleStatusUpdate = async (status: string) => {
+    if (!selectedPatient) return;
     
-    // Update local copy
-    const updatedPatients = patients.map(p => 
-      p.id === patient.id ? { ...p, status: newStatus } : p
-    );
+    setIsUpdating(true);
     
-    setPatients(updatedPatients);
-    setSelectedPatient(null);
+    try {
+      const { error } = await supabase
+        .from('patients')
+        .update({ 
+          status: status,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', selectedPatient.id);
+      
+      if (error) throw error;
+      
+      toast.success(`Patient status updated successfully to ${status}`);
+      refetchPatients();
+    } catch (error: any) {
+      console.error("Error updating patient status:", error);
+      toast.error(`Failed to update status: ${error.message}`);
+    } finally {
+      setIsUpdating(false);
+      setShowStatusDialog(false);
+      setSelectedPatient(null);
+    }
+  };
+
+  // Function to handle patient deletion
+  const handleDeleteClick = (patient: PatientRow) => {
+    setPatientToDelete(patient);
+    setShowDeleteDialog(true);
+  };
+
+  // Function to confirm and execute patient deletion
+  const confirmDelete = async () => {
+    if (!patientToDelete) return;
     
-    // Show success message
-    toast.success(`Patient ${patient.name} status updated successfully.`);
+    setIsDeleting(true);
+    
+    try {
+      // First check if this patient has related records in other tables
+      const { data: appointments, error: appointmentsError } = await supabase
+        .from('appointments')
+        .select('id')
+        .eq('patient_id', patientToDelete.id)
+        .limit(1);
+        
+      if (appointmentsError) throw appointmentsError;
+      
+      if (appointments && appointments.length > 0) {
+        toast.error("Cannot delete patient with existing appointments");
+        return;
+      }
+      
+      // Delete the patient record
+      const { error: deleteError } = await supabase
+        .from('patients')
+        .delete()
+        .eq('id', patientToDelete.id);
+        
+      if (deleteError) throw deleteError;
+      
+      // Delete the user account if needed (or just deactivate it)
+      // In a real app, you might want to just mark the user as inactive
+      // rather than actually delete them
+      
+      toast.success("Patient deleted successfully");
+      refetchPatients();
+    } catch (error: any) {
+      console.error("Error deleting patient:", error);
+      toast.error(`Failed to delete patient: ${error.message}`);
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteDialog(false);
+      setPatientToDelete(null);
+    }
+  };
+
+  // Calculate statistics
+  const calculateStats = () => {
+    if (!patients) return { total: 0, active: 0, averageAge: 0 };
+    
+    const total = patients.length;
+    
+    const active = patients.filter((p: PatientRow) => 
+      p.status === "active"
+    ).length;
+    
+    // Calculate average age
+    let totalAge = 0;
+    let count = 0;
+    
+    patients.forEach((patient: PatientRow) => {
+      if (patient.date_of_birth) {
+        const birthDate = new Date(patient.date_of_birth);
+        const today = new Date();
+        let age = today.getFullYear() - birthDate.getFullYear();
+        const monthDiff = today.getMonth() - birthDate.getMonth();
+        
+        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+          age--;
+        }
+        
+        totalAge += age;
+        count++;
+      }
+    });
+    
+    const averageAge = count > 0 ? (totalAge / count).toFixed(1) : 0;
+    
+    return { total, active, averageAge };
+  };
+
+  const stats = calculateStats();
+  
+  // Format date for display
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-GB', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric'
+    });
+  };
+  
+  // Get patient name from user relation
+  const getPatientName = (patient: any) => {
+    return patient.users?.full_name || 'Unknown';
+  };
+
+  // Get patient email from user relation
+  const getPatientEmail = (patient: any) => {
+    return patient.users?.email || 'N/A';
+  };
+
+  // Get patient phone from user relation
+  const getPatientPhone = (patient: any) => {
+    return patient.users?.phone || 'N/A';
   };
 
   return (
@@ -184,13 +383,16 @@ const PatientManagement = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {isLoading ? (
+                    {isLoadingNational ? (
                       <TableRow>
                         <TableCell colSpan={6} className="text-center h-24">
-                          Loading patients from national database...
+                          <div className="flex justify-center items-center">
+                            <Loader2 className="h-6 w-6 animate-spin mr-2" />
+                            <span>Loading patients from national database...</span>
+                          </div>
                         </TableCell>
                       </TableRow>
-                    ) : isError ? (
+                    ) : isNationalError ? (
                       <TableRow>
                         <TableCell colSpan={6} className="text-center h-24">
                           <Alert variant="destructive">
@@ -243,7 +445,7 @@ const PatientManagement = () => {
             <div className="mt-4 relative">
               <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search by name, ID or NIN..."
+                placeholder="Search by name, email, phone or NIN..."
                 className="pl-10"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -255,35 +457,55 @@ const PatientManagement = () => {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Patient ID</TableHead>
-                    <TableHead>Name</TableHead>
+                    <TableHead>Patient</TableHead>
                     <TableHead className="hidden md:table-cell">Date of Birth</TableHead>
-                    <TableHead className="hidden md:table-cell">NIN</TableHead>
                     <TableHead className="hidden md:table-cell">Gender</TableHead>
-                    <TableHead className="hidden md:table-cell">Phone Number</TableHead>
-                    <TableHead className="hidden md:table-cell">Last Visit</TableHead>
+                    <TableHead className="hidden md:table-cell">NIN</TableHead>
+                    <TableHead className="hidden md:table-cell">Phone</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredPatients.length > 0 ? (
-                    filteredPatients.map((patient) => (
+                  {isLoadingPatients ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center h-24">
+                        <div className="flex justify-center items-center">
+                          <Loader2 className="h-6 w-6 animate-spin mr-2" />
+                          <span>Loading patients...</span>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ) : patientsError ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center h-24">
+                        <Alert variant="destructive">
+                          <AlertDescription>
+                            Error loading patients. Please try again.
+                          </AlertDescription>
+                        </Alert>
+                      </TableCell>
+                    </TableRow>
+                  ) : filteredPatients.length > 0 ? (
+                    filteredPatients.map((patient: any) => (
                       <TableRow key={patient.id}>
-                        <TableCell className="font-medium">{patient.id}</TableCell>
-                        <TableCell>{patient.name}</TableCell>
-                        <TableCell className="hidden md:table-cell">{patient.dateOfBirth}</TableCell>
-                        <TableCell className="hidden md:table-cell">{patient.nin}</TableCell>
-                        <TableCell className="hidden md:table-cell">{patient.gender}</TableCell>
-                        <TableCell className="hidden md:table-cell">{patient.phoneNumber}</TableCell>
-                        <TableCell className="hidden md:table-cell">{patient.lastVisit}</TableCell>
+                        <TableCell>
+                          <div>
+                            <p className="font-medium">{getPatientName(patient)}</p>
+                            <p className="text-sm text-muted-foreground">{getPatientEmail(patient)}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell">{patient.date_of_birth ? formatDate(patient.date_of_birth) : 'N/A'}</TableCell>
+                        <TableCell className="hidden md:table-cell">{patient.gender ? patient.gender.charAt(0).toUpperCase() + patient.gender.slice(1) : 'N/A'}</TableCell>
+                        <TableCell className="hidden md:table-cell">{patient.national_id || 'N/A'}</TableCell>
+                        <TableCell className="hidden md:table-cell">{getPatientPhone(patient)}</TableCell>
                         <TableCell>
                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            patient.status === "Active" 
+                            patient.status === "active" 
                               ? "bg-green-100 text-green-800" 
                               : "bg-gray-100 text-gray-800"
                           }`}>
-                            {patient.status}
+                            {patient.status ? patient.status.charAt(0).toUpperCase() + patient.status.slice(1) : 'Unknown'}
                           </span>
                         </TableCell>
                         <TableCell className="text-right">
@@ -297,7 +519,7 @@ const PatientManagement = () => {
                             <Button 
                               variant="outline" 
                               size="icon" 
-                              title="Update National Record"
+                              title="Update Status"
                               onClick={() => updatePatientStatus(patient)}
                             >
                               <UploadCloud className="h-4 w-4" />
@@ -305,7 +527,13 @@ const PatientManagement = () => {
                             <Button variant="outline" size="icon" title="Edit Patient">
                               <Edit className="h-4 w-4" />
                             </Button>
-                            <Button variant="outline" size="icon" className="text-red-500 hover:text-red-700" title="Delete Patient">
+                            <Button 
+                              variant="outline" 
+                              size="icon" 
+                              className="text-red-500 hover:text-red-700" 
+                              title="Delete Patient"
+                              onClick={() => handleDeleteClick(patient)}
+                            >
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
@@ -314,8 +542,8 @@ const PatientManagement = () => {
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center h-24">
-                        No patients found matching your search criteria.
+                      <TableCell colSpan={7} className="text-center h-24">
+                        <p>No patients found matching your search criteria.</p>
                       </TableCell>
                     </TableRow>
                   )}
@@ -326,55 +554,106 @@ const PatientManagement = () => {
         </Card>
 
         {/* Status Update Dialog */}
-        {selectedPatient && (
-          <Dialog open={Boolean(selectedPatient)} onOpenChange={() => setSelectedPatient(null)}>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Update Patient Status</DialogTitle>
-                <DialogDescription>
-                  Update the status of this patient in the national database
-                </DialogDescription>
-              </DialogHeader>
-              <div className="py-4">
-                <h4 className="font-semibold">Patient: {selectedPatient.name}</h4>
-                <p className="text-sm text-muted-foreground">NIN: {selectedPatient.nin}</p>
-                <p className="text-sm mt-2">Current Status: <span className={selectedPatient.status === 'Active' ? 'text-green-600' : 'text-gray-600'}>{selectedPatient.status}</span></p>
-                
-                <div className="mt-4 space-y-2">
-                  <p className="text-sm font-medium">Select New Status:</p>
-                  <div className="flex gap-2">
-                    <Button 
-                      variant={selectedPatient.status === 'Active' ? 'secondary' : 'outline'} 
-                      size="sm"
-                      onClick={() => handleStatusUpdate(selectedPatient, 'Active')}
-                    >
-                      Active
-                    </Button>
-                    <Button 
-                      variant={selectedPatient.status === 'Inactive' ? 'secondary' : 'outline'} 
-                      size="sm"
-                      onClick={() => handleStatusUpdate(selectedPatient, 'Inactive')}
-                    >
-                      Inactive
-                    </Button>
-                    <Button 
-                      variant={selectedPatient.status === 'Transferred' ? 'secondary' : 'outline'} 
-                      size="sm"
-                      onClick={() => handleStatusUpdate(selectedPatient, 'Transferred')}
-                    >
-                      Transferred
-                    </Button>
+        <Dialog open={showStatusDialog} onOpenChange={setShowStatusDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Update Patient Status</DialogTitle>
+              <DialogDescription>
+                Update the status of this patient in the system
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+              {selectedPatient && (
+                <>
+                  <h4 className="font-semibold">Patient: {selectedPatient.users?.full_name || 'Unknown'}</h4>
+                  <p className="text-sm text-muted-foreground">ID: {selectedPatient.national_id || 'N/A'}</p>
+                  <p className="text-sm mt-2">Current Status: 
+                    <span className={selectedPatient.status === 'active' ? 'text-green-600 ml-1' : 'text-gray-600 ml-1'}>
+                      {selectedPatient.status ? selectedPatient.status.charAt(0).toUpperCase() + selectedPatient.status.slice(1) : 'Unknown'}
+                    </span>
+                  </p>
+                  
+                  <div className="mt-4 space-y-2">
+                    <p className="text-sm font-medium">Select New Status:</p>
+                    <div className="flex gap-2">
+                      <Button 
+                        variant={selectedPatient.status === 'active' ? 'secondary' : 'outline'} 
+                        size="sm"
+                        onClick={() => handleStatusUpdate('active')}
+                        disabled={isUpdating}
+                      >
+                        Active
+                      </Button>
+                      <Button 
+                        variant={selectedPatient.status === 'inactive' ? 'secondary' : 'outline'} 
+                        size="sm"
+                        onClick={() => handleStatusUpdate('inactive')}
+                        disabled={isUpdating}
+                      >
+                        Inactive
+                      </Button>
+                      <Button 
+                        variant={selectedPatient.status === 'transferred' ? 'secondary' : 'outline'} 
+                        size="sm"
+                        onClick={() => handleStatusUpdate('transferred')}
+                        disabled={isUpdating}
+                      >
+                        Transferred
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setSelectedPatient(null)}>
-                  Cancel
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        )}
+                </>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowStatusDialog(false)} disabled={isUpdating}>
+                Cancel
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Confirmation Dialog */}
+        <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete Patient</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to delete this patient? This action cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+              {patientToDelete && (
+                <>
+                  <h4 className="font-semibold">Patient: {patientToDelete.users?.full_name || 'Unknown'}</h4>
+                  <p className="text-sm text-muted-foreground">ID: {patientToDelete.national_id || 'N/A'}</p>
+                  <Alert variant="destructive" className="mt-4">
+                    <AlertDescription>
+                      Deleting this patient will permanently remove all their records from the system.
+                    </AlertDescription>
+                  </Alert>
+                </>
+              )}
+            </div>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button variant="outline" disabled={isDeleting}>Cancel</Button>
+              </DialogClose>
+              <Button 
+                variant="destructive" 
+                onClick={confirmDelete}
+                disabled={isDeleting}
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Deleting...
+                  </>
+                ) : "Delete Patient"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Quick Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -386,9 +665,9 @@ const PatientManagement = () => {
               <Users className="h-5 w-5 text-blue-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{patients.length}</div>
+              <div className="text-2xl font-bold">{stats.total}</div>
               <p className="text-xs text-muted-foreground mt-1">
-                {patients.filter(p => p.status === "Active").length} active
+                {stats.active} active
               </p>
             </CardContent>
           </Card>
@@ -401,9 +680,20 @@ const PatientManagement = () => {
               <UserPlus className="h-5 w-5 text-green-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">24</div>
+              <div className="text-2xl font-bold">
+                {isLoadingPatients ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  patients?.filter((p: any) => {
+                    const createdAt = new Date(p.created_at);
+                    const now = new Date();
+                    return createdAt.getMonth() === now.getMonth() && 
+                           createdAt.getFullYear() === now.getFullYear();
+                  }).length || 0
+                )}
+              </div>
               <p className="text-xs text-muted-foreground mt-1">
-                +12% from last month
+                {isLoadingPatients ? "Calculating..." : "From last 30 days"}
               </p>
             </CardContent>
           </Card>
@@ -416,7 +706,7 @@ const PatientManagement = () => {
               <Heart className="h-5 w-5 text-red-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">36.5</div>
+              <div className="text-2xl font-bold">{stats.averageAge}</div>
               <p className="text-xs text-muted-foreground mt-1">
                 Based on all registered patients
               </p>

@@ -1,7 +1,6 @@
 
 import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { useToast } from "@/components/ui/use-toast";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -12,6 +11,8 @@ import { LockIcon, UserIcon, MailIcon, ShieldIcon, Loader2, Lock, LogIn } from "
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
+import Footer from "@/components/Footer";
+import { useAuth } from "@/contexts/AuthContext";
 
 const Auth = () => {
   const [isLoading, setIsLoading] = useState(false);
@@ -26,51 +27,36 @@ const Auth = () => {
     rememberMe: false
   });
   const navigate = useNavigate();
+  const location = useLocation();
+  const from = location.state?.from?.pathname || "/";
+  const { user, refreshUser } = useAuth();
 
-  // Check if user is already logged in
+  // Redirect if user is already logged in
   useEffect(() => {
-    const checkSession = async () => {
-      const { data } = await supabase.auth.getSession();
-      if (data.session) {
-        redirectBasedOnUserType(data.session.user.id);
-      }
-    };
+    if (user) {
+      redirectBasedOnUserType();
+    }
+  }, [user]);
 
-    checkSession();
-  }, []);
-
-  const redirectBasedOnUserType = async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('user_type')
-        .eq('id', userId)
-        .single();
-
-      if (error) throw error;
-
-      if (data) {
-        switch (data.user_type) {
-          case 'super_admin':
-          case 'admin':
-            navigate('/admin-dashboard');
-            break;
-          case 'hospital_staff':
-            navigate('/hospital-dashboard');
-            break;
-          case 'police':
-            navigate('/police-dashboard');
-            break;
-          case 'patient':
-            navigate('/patient-dashboard');
-            break;
-          default:
-            navigate('/patient-dashboard');
-        }
-      }
-    } catch (error) {
-      console.error('Error getting user type:', error);
-      navigate('/patient-dashboard');
+  const redirectBasedOnUserType = () => {
+    if (!user?.user_type) return;
+    
+    switch (user.user_type) {
+      case 'super_admin':
+      case 'admin':
+        navigate('/admin-dashboard');
+        break;
+      case 'hospital_staff':
+        navigate('/hospital-dashboard');
+        break;
+      case 'police':
+        navigate('/police-dashboard');
+        break;
+      case 'patient':
+        navigate('/patient-dashboard');
+        break;
+      default:
+        navigate('/patient-dashboard');
     }
   };
 
@@ -112,9 +98,36 @@ const Auth = () => {
         localStorage.setItem('authSession', JSON.stringify(data.session));
       }
       
+      // Refresh user data in the context
+      await refreshUser();
+      
       // Redirect based on user type
       if (data.user) {
-        redirectBasedOnUserType(data.user.id);
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('user_type')
+          .eq('id', data.user.id)
+          .single();
+        
+        if (userError) throw userError;
+        
+        switch (userData?.user_type) {
+          case 'super_admin':
+          case 'admin':
+            navigate('/admin-dashboard');
+            break;
+          case 'hospital_staff':
+            navigate('/hospital-dashboard');
+            break;
+          case 'police':
+            navigate('/police-dashboard');
+            break;
+          case 'patient':
+            navigate('/patient-dashboard');
+            break;
+          default:
+            navigate(from);
+        }
       }
       
     } catch (error: any) {
@@ -171,7 +184,8 @@ const Auth = () => {
       
       // If auto-confirm email is enabled, user will be signed in automatically
       if (data.session) {
-        redirectBasedOnUserType(data.user.id);
+        await refreshUser();
+        redirectBasedOnUserType();
       } else {
         setActiveTab("login");
       }
@@ -215,9 +229,9 @@ const Auth = () => {
         <div className="container">
           <Link to="/" className="flex items-center gap-2 transition-transform hover:scale-105">
             <div className="w-10 h-10 rounded-full bg-health-600 text-white flex items-center justify-center font-bold">
-              HL
+              N
             </div>
-            <span className="font-semibold text-lg">HealthLink Central</span>
+            <span className="font-semibold text-lg">NHMS Portal</span>
           </Link>
         </div>
       </header>
@@ -334,6 +348,15 @@ const Auth = () => {
                         >
                           Register now
                         </button>
+                      </div>
+                      
+                      <div className="text-center text-sm">
+                        <Link 
+                          to="/patient-register"
+                          className="text-health-700 hover:text-health-900 hover:underline font-medium"
+                        >
+                          Register as Patient
+                        </Link>
                       </div>
                     </CardFooter>
                   </form>
@@ -487,6 +510,15 @@ const Auth = () => {
                           Sign in
                         </button>
                       </div>
+                      
+                      <div className="text-center text-sm">
+                        <Link 
+                          to="/patient-register"
+                          className="text-health-700 hover:text-health-900 hover:underline font-medium"
+                        >
+                          Register as Patient
+                        </Link>
+                      </div>
                     </CardFooter>
                   </form>
                 </Card>
@@ -495,12 +527,8 @@ const Auth = () => {
           </Tabs>
         </motion.div>
       </main>
-
-      <footer className="py-4 border-t bg-white/80 backdrop-blur-sm">
-        <div className="container text-center text-sm text-muted-foreground">
-          <p>&copy; {new Date().getFullYear()} HealthLink Central - National Hospital Management System</p>
-        </div>
-      </footer>
+      
+      <Footer />
     </motion.div>
   );
 };

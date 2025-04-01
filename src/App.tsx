@@ -3,6 +3,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { AuthProvider, ProtectedRoute } from "./contexts/AuthContext";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import PatientLogin from "./pages/PatientLogin";
@@ -36,75 +37,203 @@ import HospitalMedicalRecords from "./pages/HospitalMedicalRecords";
 import HospitalPharmacy from "./pages/HospitalPharmacy";
 import HospitalEmergency from "./pages/HospitalEmergency";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <Toaster />
-    <Sonner />
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Index />} />
-        <Route path="/auth" element={<Auth />} />
-        <Route path="/patient-login" element={<PatientLogin />} />
-        <Route path="/patient-register" element={<PatientRegister />} />
-        <Route path="/sitemap" element={<SiteMap />} />
-        
-        {/* Hospital routes */}
-        <Route path="/hospital-dashboard" element={<HospitalDashboard />} />
-        <Route path="/patients" element={<PatientManagement />} />
-        <Route path="/staff" element={<StaffManagement />} />
-        <Route path="/resources" element={<ResourceManagement />} />
-        <Route path="/reports" element={<Reports />} />
-        <Route path="/hospital/appointments" element={<HospitalAppointments />} />
-        <Route path="/hospital/medical-records" element={<HospitalMedicalRecords />} />
-        <Route path="/hospital/pharmacy" element={<HospitalPharmacy />} />
-        <Route path="/hospital/emergency" element={<HospitalEmergency />} />
-        
-        {/* Patient routes */}
-        <Route path="/patient-dashboard" element={<PatientDashboard />} />
-        <Route path="/patient-appointments" element={<PatientAppointments />} />
-        <Route path="/patient-records" element={<PatientRecords />} />
-        <Route path="/patient-prescriptions" element={<PatientDashboard />} />
-        <Route path="/patient-messages" element={<PatientDashboard />} />
-        <Route path="/patient-settings" element={<PatientDashboard />} />
-        <Route path="/patient-notifications" element={<PatientDashboard />} />
-        
-        {/* Police routes */}
-        <Route path="/police-dashboard" element={<PoliceDashboard />} />
-        <Route path="/accident-reports" element={<AccidentReports />} />
-        <Route path="/police-directory" element={<PoliceDashboard />} />
-        <Route path="/police-reports" element={<PoliceDashboard />} />
-        <Route path="/police-profile" element={<PoliceDashboard />} />
-        <Route path="/traffic-violations" element={<PoliceDashboard />} />
-        <Route path="/emergency-alerts" element={<PoliceDashboard />} />
-        
-        {/* Admin routes */}
-        <Route path="/admin-dashboard" element={<AdminDashboard />} />
-        <Route path="/admin/hospitals" element={<AdminDashboard />} />
-        <Route path="/admin/police" element={<AdminDashboard />} />
-        <Route path="/admin/users" element={<AdminDashboard />} />
-        <Route path="/admin/reports" element={<AdminDashboard />} />
-        <Route path="/admin/audit-logs" element={<AdminDashboard />} />
-        <Route path="/admin/settings" element={<AdminDashboard />} />
-        
-        {/* Registration routes */}
-        <Route path="/hospital-registration" element={<HospitalRegistration />} />
-        <Route path="/police-registration" element={<PoliceRegistration />} />
-        <Route path="/staff-registration" element={<StaffRegistration />} />
-        <Route path="/officer-registration" element={<OfficerRegistration />} />
-        
-        {/* Information pages */}
-        <Route path="/documentation" element={<Documentation />} />
-        <Route path="/privacy-policy" element={<PrivacyPolicy />} />
-        <Route path="/terms-of-service" element={<TermsOfService />} />
-        <Route path="/faq" element={<FAQ />} />
-        <Route path="/support" element={<Support />} />
-        
-        {/* Catch-all */}
-        <Route path="*" element={<NotFound />} />
-      </Routes>
-    </BrowserRouter>
+    <AuthProvider>
+      <Toaster />
+      <Sonner />
+      <BrowserRouter>
+        <Routes>
+          {/* Public routes */}
+          <Route path="/" element={<Index />} />
+          <Route path="/auth" element={<Auth />} />
+          <Route path="/patient-login" element={<PatientLogin />} />
+          <Route path="/patient-register" element={<PatientRegister />} />
+          <Route path="/sitemap" element={<SiteMap />} />
+          <Route path="/documentation" element={<Documentation />} />
+          <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+          <Route path="/terms-of-service" element={<TermsOfService />} />
+          <Route path="/faq" element={<FAQ />} />
+          <Route path="/support" element={<Support />} />
+          
+          {/* Registration routes */}
+          <Route path="/hospital-registration" element={<HospitalRegistration />} />
+          <Route path="/police-registration" element={<PoliceRegistration />} />
+          <Route path="/staff-registration" element={<StaffRegistration />} />
+          <Route path="/officer-registration" element={<OfficerRegistration />} />
+          
+          {/* Protected routes - Hospital */}
+          <Route path="/hospital-dashboard" element={
+            <ProtectedRoute allowedRoles={['hospital_staff', 'admin', 'super_admin']}>
+              <HospitalDashboard />
+            </ProtectedRoute>
+          } />
+          <Route path="/patients" element={
+            <ProtectedRoute allowedRoles={['hospital_staff', 'admin', 'super_admin']}>
+              <PatientManagement />
+            </ProtectedRoute>
+          } />
+          <Route path="/staff" element={
+            <ProtectedRoute allowedRoles={['hospital_staff', 'admin', 'super_admin']}>
+              <StaffManagement />
+            </ProtectedRoute>
+          } />
+          <Route path="/resources" element={
+            <ProtectedRoute allowedRoles={['hospital_staff', 'admin', 'super_admin']}>
+              <ResourceManagement />
+            </ProtectedRoute>
+          } />
+          <Route path="/reports" element={
+            <ProtectedRoute allowedRoles={['hospital_staff', 'admin', 'super_admin']}>
+              <Reports />
+            </ProtectedRoute>
+          } />
+          <Route path="/hospital/appointments" element={
+            <ProtectedRoute allowedRoles={['hospital_staff', 'admin', 'super_admin']}>
+              <HospitalAppointments />
+            </ProtectedRoute>
+          } />
+          <Route path="/hospital/medical-records" element={
+            <ProtectedRoute allowedRoles={['hospital_staff', 'admin', 'super_admin']}>
+              <HospitalMedicalRecords />
+            </ProtectedRoute>
+          } />
+          <Route path="/hospital/pharmacy" element={
+            <ProtectedRoute allowedRoles={['hospital_staff', 'admin', 'super_admin']}>
+              <HospitalPharmacy />
+            </ProtectedRoute>
+          } />
+          <Route path="/hospital/emergency" element={
+            <ProtectedRoute allowedRoles={['hospital_staff', 'admin', 'super_admin']}>
+              <HospitalEmergency />
+            </ProtectedRoute>
+          } />
+          
+          {/* Protected routes - Patient */}
+          <Route path="/patient-dashboard" element={
+            <ProtectedRoute allowedRoles={['patient', 'admin', 'super_admin']}>
+              <PatientDashboard />
+            </ProtectedRoute>
+          } />
+          <Route path="/patient-appointments" element={
+            <ProtectedRoute allowedRoles={['patient', 'admin', 'super_admin']}>
+              <PatientAppointments />
+            </ProtectedRoute>
+          } />
+          <Route path="/patient-records" element={
+            <ProtectedRoute allowedRoles={['patient', 'admin', 'super_admin']}>
+              <PatientRecords />
+            </ProtectedRoute>
+          } />
+          <Route path="/patient-prescriptions" element={
+            <ProtectedRoute allowedRoles={['patient', 'admin', 'super_admin']}>
+              <PatientDashboard />
+            </ProtectedRoute>
+          } />
+          <Route path="/patient-messages" element={
+            <ProtectedRoute allowedRoles={['patient', 'admin', 'super_admin']}>
+              <PatientDashboard />
+            </ProtectedRoute>
+          } />
+          <Route path="/patient-settings" element={
+            <ProtectedRoute allowedRoles={['patient', 'admin', 'super_admin']}>
+              <PatientDashboard />
+            </ProtectedRoute>
+          } />
+          <Route path="/patient-notifications" element={
+            <ProtectedRoute allowedRoles={['patient', 'admin', 'super_admin']}>
+              <PatientDashboard />
+            </ProtectedRoute>
+          } />
+          
+          {/* Protected routes - Police */}
+          <Route path="/police-dashboard" element={
+            <ProtectedRoute allowedRoles={['police', 'admin', 'super_admin']}>
+              <PoliceDashboard />
+            </ProtectedRoute>
+          } />
+          <Route path="/accident-reports" element={
+            <ProtectedRoute allowedRoles={['police', 'admin', 'super_admin']}>
+              <AccidentReports />
+            </ProtectedRoute>
+          } />
+          <Route path="/police-directory" element={
+            <ProtectedRoute allowedRoles={['police', 'admin', 'super_admin']}>
+              <PoliceDashboard />
+            </ProtectedRoute>
+          } />
+          <Route path="/police-reports" element={
+            <ProtectedRoute allowedRoles={['police', 'admin', 'super_admin']}>
+              <PoliceDashboard />
+            </ProtectedRoute>
+          } />
+          <Route path="/police-profile" element={
+            <ProtectedRoute allowedRoles={['police', 'admin', 'super_admin']}>
+              <PoliceDashboard />
+            </ProtectedRoute>
+          } />
+          <Route path="/traffic-violations" element={
+            <ProtectedRoute allowedRoles={['police', 'admin', 'super_admin']}>
+              <PoliceDashboard />
+            </ProtectedRoute>
+          } />
+          <Route path="/emergency-alerts" element={
+            <ProtectedRoute allowedRoles={['police', 'admin', 'super_admin']}>
+              <PoliceDashboard />
+            </ProtectedRoute>
+          } />
+          
+          {/* Protected routes - Admin */}
+          <Route path="/admin-dashboard" element={
+            <ProtectedRoute allowedRoles={['admin', 'super_admin']}>
+              <AdminDashboard />
+            </ProtectedRoute>
+          } />
+          <Route path="/admin/hospitals" element={
+            <ProtectedRoute allowedRoles={['admin', 'super_admin']}>
+              <AdminDashboard />
+            </ProtectedRoute>
+          } />
+          <Route path="/admin/police" element={
+            <ProtectedRoute allowedRoles={['admin', 'super_admin']}>
+              <AdminDashboard />
+            </ProtectedRoute>
+          } />
+          <Route path="/admin/users" element={
+            <ProtectedRoute allowedRoles={['admin', 'super_admin']}>
+              <AdminDashboard />
+            </ProtectedRoute>
+          } />
+          <Route path="/admin/reports" element={
+            <ProtectedRoute allowedRoles={['admin', 'super_admin']}>
+              <AdminDashboard />
+            </ProtectedRoute>
+          } />
+          <Route path="/admin/audit-logs" element={
+            <ProtectedRoute allowedRoles={['admin', 'super_admin']}>
+              <AdminDashboard />
+            </ProtectedRoute>
+          } />
+          <Route path="/admin/settings" element={
+            <ProtectedRoute allowedRoles={['admin', 'super_admin']}>
+              <AdminDashboard />
+            </ProtectedRoute>
+          } />
+          
+          {/* Catch-all */}
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
   </QueryClientProvider>
 );
 

@@ -1,6 +1,6 @@
 
 import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,8 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Label } from "@/components/ui/label";
 import { LockIcon, UserIcon, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import Footer from "@/components/Footer";
 
 const PatientLogin = () => {
   const [isLoading, setIsLoading] = useState(false);
@@ -19,52 +21,20 @@ const PatientLogin = () => {
   });
   const { toast } = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
+  const from = location.state?.from?.pathname || "/patient-dashboard";
+  const { user, refreshUser } = useAuth();
 
   // Check if user is already logged in
   useEffect(() => {
-    const checkSession = async () => {
-      const { data } = await supabase.auth.getSession();
-      if (data.session) {
-        redirectBasedOnUserType(data.session.user.id);
+    if (user) {
+      if (user.user_type === 'patient') {
+        navigate('/patient-dashboard');
+      } else {
+        navigate('/auth');
       }
-    };
-
-    checkSession();
-  }, []);
-
-  const redirectBasedOnUserType = async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('user_type')
-        .eq('id', userId)
-        .single();
-
-      if (error) throw error;
-
-      if (data) {
-        switch (data.user_type) {
-          case 'admin':
-            navigate('/hospital-dashboard');
-            break;
-          case 'hospital_staff':
-            navigate('/hospital-dashboard');
-            break;
-          case 'police':
-            navigate('/police-dashboard');
-            break;
-          case 'patient':
-            navigate('/patient-dashboard');
-            break;
-          default:
-            navigate('/patient-dashboard');
-        }
-      }
-    } catch (error) {
-      console.error('Error getting user type:', error);
-      navigate('/patient-dashboard');
     }
-  };
+  }, [user, navigate]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -111,10 +81,11 @@ const PatientLogin = () => {
         localStorage.setItem('authSession', JSON.stringify(data.session));
       }
       
-      // Redirect based on user type
-      if (data.user) {
-        redirectBasedOnUserType(data.user.id);
-      }
+      // Refresh user data in context
+      await refreshUser();
+      
+      // Redirect to patient dashboard
+      navigate('/patient-dashboard');
       
     } catch (error: any) {
       toast({
@@ -225,7 +196,17 @@ const PatientLogin = () => {
                   to="/patient-register" 
                   className="text-health-700 hover:text-health-900 hover:underline font-medium"
                 >
-                  Register now
+                  Register
+                </Link>
+              </div>
+              
+              <div className="text-center text-sm">
+                Are you a hospital or police staff?{" "}
+                <Link 
+                  to="/auth" 
+                  className="text-health-700 hover:text-health-900 hover:underline font-medium"
+                >
+                  Login here
                 </Link>
               </div>
             </CardFooter>
@@ -233,11 +214,7 @@ const PatientLogin = () => {
         </Card>
       </main>
 
-      <footer className="py-4 border-t">
-        <div className="container text-center text-sm text-muted-foreground">
-          <p>&copy; {new Date().getFullYear()} National Hospital Management System. All rights reserved.</p>
-        </div>
-      </footer>
+      <Footer />
     </div>
   );
 };

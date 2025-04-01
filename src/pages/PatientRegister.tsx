@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { LockIcon, UserIcon, Loader2, ChevronLeft, CalendarIcon, Phone } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import Footer from "@/components/Footer";
 
 const PatientRegister = () => {
   const [isLoading, setIsLoading] = useState(false);
@@ -22,9 +24,24 @@ const PatientRegister = () => {
     gender: "",
     dob: "",
     bloodType: "",
+    allergies: "",
+    emergency_contact_name: "",
+    emergency_contact_phone: ""
   });
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { user, refreshUser } = useAuth();
+
+  // Check if user is already logged in
+  useEffect(() => {
+    if (user) {
+      if (user.user_type === 'patient') {
+        navigate('/patient-dashboard');
+      } else {
+        navigate('/auth');
+      }
+    }
+  }, [user, navigate]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -84,6 +101,9 @@ const PatientRegister = () => {
             gender: formData.gender,
             date_of_birth: formData.dob,
             blood_type: formData.bloodType,
+            allergies: formData.allergies,
+            emergency_contact_name: formData.emergency_contact_name,
+            emergency_contact_phone: formData.emergency_contact_phone,
             status: 'active'
           }]);
 
@@ -92,10 +112,25 @@ const PatientRegister = () => {
           throw patientError;
         }
 
+        // Update users table with phone number
+        if (formData.phone) {
+          const { error: userUpdateError } = await supabase
+            .from('users')
+            .update({ phone: formData.phone })
+            .eq('id', data.user.id);
+
+          if (userUpdateError) {
+            console.error("Error updating user phone:", userUpdateError);
+          }
+        }
+
         toast({
           title: "Registration Successful",
           description: "Your account has been created. Please check your email for verification.",
         });
+        
+        // Refresh user data in context
+        await refreshUser();
         
         navigate("/patient-login");
       }
@@ -262,6 +297,44 @@ const PatientRegister = () => {
                 </div>
               </div>
               
+              <div className="space-y-2">
+                <Label htmlFor="allergies">Allergies (optional)</Label>
+                <Input 
+                  id="allergies" 
+                  name="allergies" 
+                  placeholder="List any allergies" 
+                  value={formData.allergies}
+                  onChange={handleChange}
+                  disabled={isLoading}
+                />
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="emergency_contact_name">Emergency Contact Name</Label>
+                  <Input 
+                    id="emergency_contact_name" 
+                    name="emergency_contact_name" 
+                    placeholder="Next of kin" 
+                    value={formData.emergency_contact_name}
+                    onChange={handleChange}
+                    disabled={isLoading}
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="emergency_contact_phone">Emergency Contact Number</Label>
+                  <Input 
+                    id="emergency_contact_phone" 
+                    name="emergency_contact_phone" 
+                    placeholder="+1234567890" 
+                    value={formData.emergency_contact_phone}
+                    onChange={handleChange}
+                    disabled={isLoading}
+                  />
+                </div>
+              </div>
+              
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="password">Password</Label>
@@ -329,11 +402,7 @@ const PatientRegister = () => {
         </Card>
       </main>
 
-      <footer className="py-4 border-t">
-        <div className="container text-center text-sm text-muted-foreground">
-          <p>&copy; {new Date().getFullYear()} National Hospital Management System. All rights reserved.</p>
-        </div>
-      </footer>
+      <Footer />
     </div>
   );
 };

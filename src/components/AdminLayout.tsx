@@ -18,10 +18,10 @@ import {
   ChevronUp
 } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
 import { motion, AnimatePresence } from "framer-motion";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -31,55 +31,20 @@ interface AdminLayoutProps {
 
 const AdminLayout = ({ children, activeTab = "dashboard", onTabChange }: AdminLayoutProps) => {
   const navigate = useNavigate();
-  const [userRole, setUserRole] = useState<string | null>(null);
-  const [userName, setUserName] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [notificationCount, setNotificationCount] = useState(3);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [notificationCount, setNotificationCount] = useState(3);
+  const { user, userType, isLoading, signOut } = useAuth();
 
   useEffect(() => {
-    const checkAdminAccess = async () => {
-      try {
-        setIsLoading(true);
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        if (!session) {
-          toast.error("You must be logged in to access this page");
-          navigate("/auth");
-          return;
-        }
-        
-        const { data: userData, error } = await supabase
-          .from('users')
-          .select('user_type, full_name')
-          .eq('id', session.user.id)
-          .single();
-        
-        if (error) throw error;
-        
-        if (userData.user_type !== 'admin' && userData.user_type !== 'super_admin') {
-          toast.error("You don't have permission to access this page");
-          navigate("/auth");
-          return;
-        }
-
-        setUserRole(userData.user_type);
-        setUserName(userData.full_name);
-      } catch (error) {
-        console.error("Error checking admin access:", error);
-        toast.error("An error occurred while checking your access rights");
-        navigate("/auth");
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    checkAdminAccess();
-  }, [navigate]);
+    // Check if user has admin privileges
+    if (!isLoading && (!user || (userType !== 'admin' && userType !== 'super_admin'))) {
+      toast.error("You don't have permission to access this page");
+      navigate("/auth");
+    }
+  }, [user, userType, isLoading, navigate]);
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    toast.success("Signed out successfully");
+    await signOut();
     navigate("/auth");
   };
 
@@ -134,7 +99,7 @@ const AdminLayout = ({ children, activeTab = "dashboard", onTabChange }: AdminLa
           >
             <Lock className="h-6 w-6 text-purple-600" />
             <h1 className="text-xl font-bold">
-              {userRole === 'super_admin' ? 'Super Admin Dashboard' : 'Admin Dashboard'}
+              {userType === 'super_admin' ? 'Super Admin Dashboard' : 'Admin Dashboard'}
             </h1>
           </motion.div>
           <motion.div 
@@ -183,12 +148,12 @@ const AdminLayout = ({ children, activeTab = "dashboard", onTabChange }: AdminLa
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="flex items-center gap-2">
                   <Avatar className="h-8 w-8">
-                    <AvatarImage src="" alt={userName || ""} />
+                    <AvatarImage src="" alt={user?.full_name || ""} />
                     <AvatarFallback className="bg-purple-100 text-purple-800">
-                      {userName?.split(' ').map(n => n[0]).join('').toUpperCase() || 'A'}
+                      {user?.full_name?.split(' ').map(n => n[0]).join('').toUpperCase() || 'A'}
                     </AvatarFallback>
                   </Avatar>
-                  <span className="font-medium text-sm hidden md:inline-block">{userName}</span>
+                  <span className="font-medium text-sm hidden md:inline-block">{user?.full_name}</span>
                   <ChevronDown className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
