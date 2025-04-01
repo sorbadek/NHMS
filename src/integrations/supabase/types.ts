@@ -193,34 +193,58 @@ export type Database = {
       }
       hospital_staff: {
         Row: {
+          certification: string[] | null
           created_at: string | null
           department: string | null
+          education: string | null
           hospital_id: string | null
           id: string
+          license_number: string | null
+          registration_date: string | null
           role: string
+          role_specific: Database["public"]["Enums"]["staff_role"] | null
+          shift_preference: string | null
+          specialization: string | null
           status: string | null
           updated_at: string | null
           user_id: string | null
+          years_of_experience: number | null
         }
         Insert: {
+          certification?: string[] | null
           created_at?: string | null
           department?: string | null
+          education?: string | null
           hospital_id?: string | null
           id?: string
+          license_number?: string | null
+          registration_date?: string | null
           role: string
+          role_specific?: Database["public"]["Enums"]["staff_role"] | null
+          shift_preference?: string | null
+          specialization?: string | null
           status?: string | null
           updated_at?: string | null
           user_id?: string | null
+          years_of_experience?: number | null
         }
         Update: {
+          certification?: string[] | null
           created_at?: string | null
           department?: string | null
+          education?: string | null
           hospital_id?: string | null
           id?: string
+          license_number?: string | null
+          registration_date?: string | null
           role?: string
+          role_specific?: Database["public"]["Enums"]["staff_role"] | null
+          shift_preference?: string | null
+          specialization?: string | null
           status?: string | null
           updated_at?: string | null
           user_id?: string | null
+          years_of_experience?: number | null
         }
         Relationships: [
           {
@@ -570,7 +594,20 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      staff_role:
+        | "doctor"
+        | "nurse"
+        | "receptionist"
+        | "lab_technician"
+        | "pharmacist"
+        | "administrator"
+        | "radiologist"
+        | "physiotherapist"
+        | "nutritionist"
+        | "security"
+        | "maintenance"
+        | "it_support"
+        | "hospital_admin"
     }
     CompositeTypes: {
       [_ in never]: never

@@ -65,6 +65,25 @@ export type HospitalRow = {
   updated_at?: string | null;
 };
 
+export type HospitalStaffRow = {
+  id: string;
+  user_id?: string | null;
+  hospital_id?: string | null;
+  role: string;
+  role_specific?: string | null;
+  department?: string | null;
+  status?: string | null;
+  specialization?: string | null;
+  license_number?: string | null;
+  education?: string | null;
+  years_of_experience?: number | null;
+  shift_preference?: string | null;
+  registration_date?: string | null;
+  certification?: string[] | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
 // User roles - expanded to include all role types
 export enum UserRole {
   SUPER_ADMIN = 'super_admin',
@@ -77,6 +96,23 @@ export enum UserRole {
   POLICE_ADMIN = 'police_admin',
   POLICE_OFFICER = 'police_officer',
   PATIENT = 'patient'
+}
+
+// Staff specific roles from the enum
+export enum StaffRole {
+  DOCTOR = 'doctor',
+  NURSE = 'nurse',
+  RECEPTIONIST = 'receptionist',
+  LAB_TECHNICIAN = 'lab_technician',
+  PHARMACIST = 'pharmacist',
+  ADMINISTRATOR = 'administrator',
+  RADIOLOGIST = 'radiologist',
+  PHYSIOTHERAPIST = 'physiotherapist',
+  NUTRITIONIST = 'nutritionist',
+  SECURITY = 'security',
+  MAINTENANCE = 'maintenance',
+  IT_SUPPORT = 'it_support',
+  HOSPITAL_ADMIN = 'hospital_admin'
 }
 
 // Extend Database type to include the appointments table
@@ -108,6 +144,25 @@ export type ExtendedDatabase = Database & {
           }
         ];
       };
+      hospital_staff: {
+        Row: HospitalStaffRow;
+        Insert: Omit<HospitalStaffRow, 'id' | 'created_at' | 'updated_at'> & { id?: string };
+        Update: Partial<Omit<HospitalStaffRow, 'id'>>;
+        Relationships: [
+          {
+            foreignKeyName: 'hospital_staff_hospital_id_fkey';
+            columns: ['hospital_id'];
+            referencedRelation: 'hospitals';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'hospital_staff_user_id_fkey';
+            columns: ['user_id'];
+            referencedRelation: 'users';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
     };
   };
 };
@@ -125,6 +180,12 @@ export type AppointmentWithJoins = AppointmentRow & {
   patients?: PatientRow | UserRow | Record<string, any> | null;
   doctors?: UserRow | Record<string, any> | null;
   hospitals?: HospitalRow | Record<string, any> | null;
+};
+
+// Type helper for staff with joins
+export type StaffWithJoins = HospitalStaffRow & {
+  users?: UserRow | null;
+  hospitals?: HospitalRow | null;
 };
 
 // Helper function to safely extract nested data
@@ -225,5 +286,36 @@ export const getUserWithRole = async (): Promise<{
   } catch (error) {
     console.error("Error in getUserWithRole:", error);
     return { user: null, role: null, organization_id: null };
+  }
+};
+
+// Format date helper
+export const formatDate = (dateString: string | null | undefined): string => {
+  if (!dateString) return '';
+  try {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-NG', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric'
+    });
+  } catch (error) {
+    console.error("Error formatting date:", error);
+    return '';
+  }
+};
+
+// Format time helper
+export const formatTime = (dateString: string | null | undefined): string => {
+  if (!dateString) return '';
+  try {
+    const date = new Date(dateString);
+    return date.toLocaleTimeString('en-NG', {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  } catch (error) {
+    console.error("Error formatting time:", error);
+    return '';
   }
 };
