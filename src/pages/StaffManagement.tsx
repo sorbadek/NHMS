@@ -29,7 +29,7 @@ import {
   Clock,
   Loader2
 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, StaffWithJoins } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 
 interface Staff {
@@ -79,33 +79,66 @@ const StaffManagement = () => {
     queryFn: async () => {
       if (!currentHospitalId) return [];
       
-      const { data, error } = await supabase
+      // First fetch staff records
+      const { data: staffRecords, error: staffError } = await supabase
         .from('hospital_staff')
         .select(`
           id,
           role,
           department,
           status,
-          user_id,
-          users:user_id (
-            full_name,
-            email,
-            phone
-          )
+          user_id
         `)
         .eq('hospital_id', currentHospitalId);
       
-      if (error) throw error;
+      if (staffError) throw staffError;
       
-      return data.map(staff => ({
-        id: staff.id,
-        name: staff.users?.full_name || 'Unknown',
-        role: staff.role || 'Undefined',
-        department: staff.department || 'General',
-        email: staff.users?.email || 'N/A',
-        phone: staff.users?.phone || 'N/A',
-        status: staff.status || 'Unknown'
-      }));
+      // Then fetch user details separately for each staff member
+      const staffWithUserDetails = await Promise.all(
+        staffRecords.map(async (staff) => {
+          if (!staff.user_id) {
+            return {
+              id: staff.id,
+              name: 'Unknown',
+              role: staff.role || 'Undefined',
+              department: staff.department || 'General',
+              email: 'N/A',
+              phone: 'N/A',
+              status: staff.status || 'Unknown'
+            };
+          }
+          
+          const { data: userData, error: userError } = await supabase
+            .from('users')
+            .select('full_name, email, phone')
+            .eq('id', staff.user_id)
+            .single();
+          
+          if (userError || !userData) {
+            return {
+              id: staff.id,
+              name: 'Unknown',
+              role: staff.role || 'Undefined',
+              department: staff.department || 'General',
+              email: 'N/A',
+              phone: 'N/A',
+              status: staff.status || 'Unknown'
+            };
+          }
+          
+          return {
+            id: staff.id,
+            name: userData.full_name || 'Unknown',
+            role: staff.role || 'Undefined',
+            department: staff.department || 'General',
+            email: userData.email || 'N/A',
+            phone: userData.phone || 'N/A',
+            status: staff.status || 'Unknown'
+          };
+        })
+      );
+      
+      return staffWithUserDetails;
     },
     enabled: !!currentHospitalId
   });
