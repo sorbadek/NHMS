@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { 
   Card, 
@@ -23,7 +22,6 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase, formatDate, formatTime } from "@/integrations/supabase/client";
 import { Link } from "react-router-dom";
 
-// Define types for database records
 type PatientInfoType = {
   id: string;
   name: string;
@@ -73,7 +71,6 @@ type Prescription = {
   status: string;
 };
 
-// Define types for database responses
 type HospitalResponse = {
   name: string;
 };
@@ -82,7 +79,6 @@ type DoctorResponse = {
   full_name: string;
 };
 
-// Define appointment response type with safer types - updated to match actual database response
 type AppointmentResponseType = {
   id: string;
   appointment_date: string;
@@ -95,11 +91,10 @@ type AppointmentResponseType = {
   notes?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
-  doctors?: any; // Using any to accommodate potential SelectQueryError
-  hospitals?: any; // Using any to accommodate potential SelectQueryError
+  doctors?: any | null;
+  hospitals?: any | null;
 };
 
-// Define Prescription response type
 type PrescriptionResponseType = {
   id: string;
   created_at: string | null;
@@ -108,14 +103,13 @@ type PrescriptionResponseType = {
   frequency: string | null;
   duration: string | null;
   status: string | null;
-  doctors?: any; // Using any to accommodate potential SelectQueryError
-  hospitals?: any; // Using any to accommodate potential SelectQueryError
+  doctors?: any | null;
+  hospitals?: any | null;
 };
 
 const PatientDashboard = () => {
   const [activeTab, setActiveTab] = useState("overview");
   
-  // Fetch authenticated user data
   const { data: session } = useQuery({
     queryKey: ['session'],
     queryFn: async () => {
@@ -124,7 +118,6 @@ const PatientDashboard = () => {
     }
   });
 
-  // Fetch patient profile data
   const { 
     data: patientInfo, 
     isLoading: isLoadingPatient 
@@ -170,7 +163,6 @@ const PatientDashboard = () => {
     }
   });
 
-  // Fetch medical records
   const { 
     data: medicalRecords = [], 
     isLoading: isLoadingRecords 
@@ -191,10 +183,8 @@ const PatientDashboard = () => {
       if (error) throw error;
       
       return data.map((record) => {
-        // Get doctor's name
         let doctorName = 'Unknown Doctor';
         if (record.staff) {
-          // Format doctor name based on available data
           doctorName = `Dr. ${record.staff.specialization || ''}`;
         }
         
@@ -210,7 +200,6 @@ const PatientDashboard = () => {
     }
   });
 
-  // Fetch upcoming appointments
   const { 
     data: upcomingAppointments = [], 
     isLoading: isLoadingAppointments 
@@ -231,10 +220,12 @@ const PatientDashboard = () => {
       if (error) throw error;
       
       return data.map((appointment) => {
-        // Handle possible null or missing data safely
         let doctorName = 'Assigned Doctor';
         try {
-          if (appointment.doctors && typeof appointment.doctors === 'object' && appointment.doctors.full_name) {
+          if (appointment.doctors && 
+              appointment.doctors !== null && 
+              typeof appointment.doctors === 'object' && 
+              appointment.doctors.full_name) {
             doctorName = `Dr. ${appointment.doctors.full_name}`;
           }
         } catch (e) {
@@ -243,7 +234,10 @@ const PatientDashboard = () => {
         
         let hospitalName = 'Unknown Hospital';
         try {
-          if (appointment.hospitals && typeof appointment.hospitals === 'object' && appointment.hospitals.name) {
+          if (appointment.hospitals && 
+              appointment.hospitals !== null && 
+              typeof appointment.hospitals === 'object' && 
+              appointment.hospitals.name) {
             hospitalName = appointment.hospitals.name;
           }
         } catch (e) {
@@ -263,7 +257,6 @@ const PatientDashboard = () => {
     }
   });
 
-  // Fetch prescriptions
   const { 
     data: prescriptions = [], 
     isLoading: isLoadingPrescriptions 
@@ -272,7 +265,6 @@ const PatientDashboard = () => {
     enabled: !!session?.user?.id,
     queryFn: async () => {
       try {
-        // Use a direct query approach instead of relying on table relationships
         const { data, error } = await supabase
           .from('prescriptions')
           .select(`
@@ -295,10 +287,11 @@ const PatientDashboard = () => {
         }
         
         return data.map((prescription) => {
-          // Handle possible null or missing data safely
           let doctorName = 'Unknown Doctor';
           try {
-            if (prescription.doctors && typeof prescription.doctors === 'object') {
+            if (prescription.doctors && 
+                prescription.doctors !== null && 
+                typeof prescription.doctors === 'object') {
               const fullName = prescription.doctors.full_name;
               doctorName = fullName ? `Dr. ${fullName}` : 'Unknown Doctor';
             }
@@ -308,7 +301,9 @@ const PatientDashboard = () => {
           
           let hospitalName = 'Unknown Hospital';
           try {
-            if (prescription.hospitals && typeof prescription.hospitals === 'object') {
+            if (prescription.hospitals && 
+                prescription.hospitals !== null && 
+                typeof prescription.hospitals === 'object') {
               const name = prescription.hospitals.name;
               hospitalName = name || 'Unknown Hospital';
             }
@@ -380,7 +375,6 @@ const PatientDashboard = () => {
           </div>
         </div>
 
-        {/* Patient Overview Card */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card className="md:col-span-1">
             <CardHeader>
@@ -489,7 +483,6 @@ const PatientDashboard = () => {
           </Card>
         </div>
 
-        {/* Medical Records */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -548,7 +541,6 @@ const PatientDashboard = () => {
           </CardContent>
         </Card>
 
-        {/* Prescriptions */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
