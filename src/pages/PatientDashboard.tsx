@@ -82,6 +82,19 @@ type DoctorResponse = {
   full_name: string;
 };
 
+// Define Prescription response type
+type PrescriptionResponseType = {
+  id: string;
+  created_at: string | null;
+  medication_name: string;
+  dosage: string | null;
+  frequency: string | null;
+  duration: string | null;
+  status: string | null;
+  doctors?: { full_name: string } | null;
+  hospitals?: { name: string } | null;
+};
+
 const PatientDashboard = () => {
   const [activeTab, setActiveTab] = useState("overview");
   
@@ -129,7 +142,7 @@ const PatientDashboard = () => {
         nin: patientData?.national_id || 'Not provided',
         gender: patientData?.gender || 'Not provided',
         bloodType: patientData?.blood_type || 'Not provided',
-        allergies: patientData?.allergies ? patientData.allergies.split(',').map(a => a.trim()) : [],
+        allergies: patientData?.allergies ? patientData.allergies.split(',').map((a: string) => a.trim()) : [],
         chronicConditions: [],
         emergencyContact: {
           name: patientData?.emergency_contact_name || 'Not provided',
@@ -203,13 +216,13 @@ const PatientDashboard = () => {
       return data.map((appointment) => {
         // Handle possible null or missing data safely
         let doctorName = 'Assigned Doctor';
-        if (appointment.doctors && typeof appointment.doctors === 'object' && 'full_name' in appointment.doctors) {
-          doctorName = appointment.doctors.full_name ? `Dr. ${appointment.doctors.full_name}` : 'Assigned Doctor';
+        if (appointment.doctors && typeof appointment.doctors === 'object') {
+          doctorName = appointment.doctors?.full_name ? `Dr. ${appointment.doctors.full_name}` : 'Assigned Doctor';
         }
         
         let hospitalName = 'Unknown Hospital';
-        if (appointment.hospitals && typeof appointment.hospitals === 'object' && 'name' in appointment.hospitals) {
-          hospitalName = appointment.hospitals.name || 'Unknown Hospital';
+        if (appointment.hospitals && typeof appointment.hospitals === 'object') {
+          hospitalName = appointment.hospitals?.name || 'Unknown Hospital';
         }
         
         return {
@@ -229,25 +242,34 @@ const PatientDashboard = () => {
   const { 
     data: prescriptions = [], 
     isLoading: isLoadingPrescriptions 
-  } = useQuery({
+  } = useQuery<Prescription[]>({
     queryKey: ['patientPrescriptions', session?.user?.id],
     enabled: !!session?.user?.id,
     queryFn: async () => {
       try {
-        // Check if prescriptions table exists
+        // Use a direct query approach instead of relying on table relationships
         const { data, error } = await supabase
           .from('prescriptions')
-          .select('*, hospitals:hospital_id(*), doctors:doctor_id(*)')
+          .select(`
+            id,
+            created_at,
+            medication_name,
+            dosage,
+            frequency,
+            duration,
+            status,
+            doctors:doctor_id(full_name),
+            hospitals:hospital_id(name)
+          `)
           .eq('patient_id', session!.user.id)
           .order('created_at', { ascending: false });
         
         if (error) {
           console.error("Error fetching prescriptions:", error);
-          // If table doesn't exist yet, return empty array
           return [];
         }
         
-        return data.map((prescription: any) => {
+        return (data as PrescriptionResponseType[]).map((prescription) => {
           // Handle possible null or missing data safely
           let doctorName = 'Unknown Doctor';
           if (prescription.doctors && typeof prescription.doctors === 'object' && 'full_name' in prescription.doctors) {
@@ -261,7 +283,7 @@ const PatientDashboard = () => {
           
           return {
             id: prescription.id,
-            date: formatDate(prescription.created_at),
+            date: formatDate(prescription.created_at || ''),
             medication: prescription.medication_name || 'Unknown Medication',
             dosage: prescription.dosage || 'As directed',
             frequency: prescription.frequency || 'As needed',
@@ -269,7 +291,7 @@ const PatientDashboard = () => {
             doctor: doctorName,
             hospital: hospitalName,
             status: prescription.status || 'Active',
-          } as Prescription;
+          };
         });
       } catch (error) {
         console.error("Error in prescription query:", error);
