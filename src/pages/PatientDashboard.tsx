@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { 
   Card, 
@@ -81,14 +82,21 @@ type DoctorResponse = {
   full_name: string;
 };
 
-// Define appointment response type with safer types
+// Define appointment response type with safer types - updated to match actual database response
 type AppointmentResponseType = {
   id: string;
   appointment_date: string;
   department?: string | null;
   status?: string | null;
-  doctors?: { full_name?: string | null } | null;
-  hospitals?: { name?: string | null } | null;
+  doctor_id?: string | null;
+  hospital_id?: string | null;
+  patient_id?: string | null;
+  reason?: string | null;
+  notes?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  doctors?: any; // Using any to accommodate potential SelectQueryError
+  hospitals?: any; // Using any to accommodate potential SelectQueryError
 };
 
 // Define Prescription response type
@@ -100,8 +108,8 @@ type PrescriptionResponseType = {
   frequency: string | null;
   duration: string | null;
   status: string | null;
-  doctors?: { full_name?: string | null } | null;
-  hospitals?: { name?: string | null } | null;
+  doctors?: any; // Using any to accommodate potential SelectQueryError
+  hospitals?: any; // Using any to accommodate potential SelectQueryError
 };
 
 const PatientDashboard = () => {
@@ -222,18 +230,24 @@ const PatientDashboard = () => {
       
       if (error) throw error;
       
-      return data.map((appointment: AppointmentResponseType) => {
+      return data.map((appointment) => {
         // Handle possible null or missing data safely
         let doctorName = 'Assigned Doctor';
-        if (appointment.doctors) {
-          const fullName = appointment.doctors?.full_name;
-          doctorName = fullName ? `Dr. ${fullName}` : 'Assigned Doctor';
+        try {
+          if (appointment.doctors && typeof appointment.doctors === 'object' && appointment.doctors.full_name) {
+            doctorName = `Dr. ${appointment.doctors.full_name}`;
+          }
+        } catch (e) {
+          console.error("Error processing doctor data:", e);
         }
         
         let hospitalName = 'Unknown Hospital';
-        if (appointment.hospitals) {
-          const name = appointment.hospitals?.name;
-          hospitalName = name || 'Unknown Hospital';
+        try {
+          if (appointment.hospitals && typeof appointment.hospitals === 'object' && appointment.hospitals.name) {
+            hospitalName = appointment.hospitals.name;
+          }
+        } catch (e) {
+          console.error("Error processing hospital data:", e);
         }
         
         return {
@@ -280,18 +294,26 @@ const PatientDashboard = () => {
           return [];
         }
         
-        return (data as PrescriptionResponseType[]).map((prescription) => {
+        return data.map((prescription) => {
           // Handle possible null or missing data safely
           let doctorName = 'Unknown Doctor';
-          if (prescription.doctors && typeof prescription.doctors === 'object') {
-            const fullName = prescription.doctors.full_name;
-            doctorName = fullName ? `Dr. ${fullName}` : 'Unknown Doctor';
+          try {
+            if (prescription.doctors && typeof prescription.doctors === 'object') {
+              const fullName = prescription.doctors.full_name;
+              doctorName = fullName ? `Dr. ${fullName}` : 'Unknown Doctor';
+            }
+          } catch (e) {
+            console.error("Error processing doctor data in prescription:", e);
           }
           
           let hospitalName = 'Unknown Hospital';
-          if (prescription.hospitals && typeof prescription.hospitals === 'object') {
-            const name = prescription.hospitals.name;
-            hospitalName = name || 'Unknown Hospital';
+          try {
+            if (prescription.hospitals && typeof prescription.hospitals === 'object') {
+              const name = prescription.hospitals.name;
+              hospitalName = name || 'Unknown Hospital';
+            }
+          } catch (e) {
+            console.error("Error processing hospital data in prescription:", e);
           }
           
           return {
