@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { 
   Card, 
@@ -82,6 +81,16 @@ type DoctorResponse = {
   full_name: string;
 };
 
+// Define appointment response type with safer types
+type AppointmentResponseType = {
+  id: string;
+  appointment_date: string;
+  department?: string | null;
+  status?: string | null;
+  doctors?: { full_name?: string | null } | null;
+  hospitals?: { name?: string | null } | null;
+};
+
 // Define Prescription response type
 type PrescriptionResponseType = {
   id: string;
@@ -91,8 +100,8 @@ type PrescriptionResponseType = {
   frequency: string | null;
   duration: string | null;
   status: string | null;
-  doctors?: { full_name: string } | null;
-  hospitals?: { name: string } | null;
+  doctors?: { full_name?: string | null } | null;
+  hospitals?: { name?: string | null } | null;
 };
 
 const PatientDashboard = () => {
@@ -213,16 +222,18 @@ const PatientDashboard = () => {
       
       if (error) throw error;
       
-      return data.map((appointment) => {
+      return data.map((appointment: AppointmentResponseType) => {
         // Handle possible null or missing data safely
         let doctorName = 'Assigned Doctor';
-        if (appointment.doctors && typeof appointment.doctors === 'object') {
-          doctorName = appointment.doctors?.full_name ? `Dr. ${appointment.doctors.full_name}` : 'Assigned Doctor';
+        if (appointment.doctors) {
+          const fullName = appointment.doctors?.full_name;
+          doctorName = fullName ? `Dr. ${fullName}` : 'Assigned Doctor';
         }
         
         let hospitalName = 'Unknown Hospital';
-        if (appointment.hospitals && typeof appointment.hospitals === 'object') {
-          hospitalName = appointment.hospitals?.name || 'Unknown Hospital';
+        if (appointment.hospitals) {
+          const name = appointment.hospitals?.name;
+          hospitalName = name || 'Unknown Hospital';
         }
         
         return {
@@ -272,13 +283,15 @@ const PatientDashboard = () => {
         return (data as PrescriptionResponseType[]).map((prescription) => {
           // Handle possible null or missing data safely
           let doctorName = 'Unknown Doctor';
-          if (prescription.doctors && typeof prescription.doctors === 'object' && 'full_name' in prescription.doctors) {
-            doctorName = prescription.doctors.full_name ? `Dr. ${prescription.doctors.full_name}` : 'Unknown Doctor';
+          if (prescription.doctors && typeof prescription.doctors === 'object') {
+            const fullName = prescription.doctors.full_name;
+            doctorName = fullName ? `Dr. ${fullName}` : 'Unknown Doctor';
           }
           
           let hospitalName = 'Unknown Hospital';
-          if (prescription.hospitals && typeof prescription.hospitals === 'object' && 'name' in prescription.hospitals) {
-            hospitalName = prescription.hospitals.name || 'Unknown Hospital';
+          if (prescription.hospitals && typeof prescription.hospitals === 'object') {
+            const name = prescription.hospitals.name;
+            hospitalName = name || 'Unknown Hospital';
           }
           
           return {
