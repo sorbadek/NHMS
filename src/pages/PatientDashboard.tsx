@@ -223,10 +223,9 @@ const PatientDashboard = () => {
         let doctorName = 'Assigned Doctor';
         try {
           if (appointment.doctors && 
-              appointment.doctors !== null && 
-              typeof appointment.doctors === 'object' && 
-              appointment.doctors.full_name) {
-            doctorName = `Dr. ${appointment.doctors.full_name}`;
+              appointment.doctors !== null) {
+            const doctorFullName = appointment.doctors?.full_name;
+            doctorName = doctorFullName ? `Dr. ${doctorFullName}` : 'Assigned Doctor';
           }
         } catch (e) {
           console.error("Error processing doctor data:", e);
@@ -235,10 +234,9 @@ const PatientDashboard = () => {
         let hospitalName = 'Unknown Hospital';
         try {
           if (appointment.hospitals && 
-              appointment.hospitals !== null && 
-              typeof appointment.hospitals === 'object' && 
-              appointment.hospitals.name) {
-            hospitalName = appointment.hospitals.name;
+              appointment.hospitals !== null) {
+            const hospitalNameValue = appointment.hospitals?.name;
+            hospitalName = hospitalNameValue || 'Unknown Hospital';
           }
         } catch (e) {
           console.error("Error processing hospital data:", e);
