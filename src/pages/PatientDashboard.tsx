@@ -23,6 +23,56 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase, formatDate, formatTime } from "@/integrations/supabase/client";
 import { Link } from "react-router-dom";
 
+// Define types for database records
+type PatientInfoType = {
+  id: string;
+  name: string;
+  email: string;
+  phoneNumber: string;
+  dateOfBirth: string;
+  nin: string;
+  gender: string;
+  bloodType: string;
+  allergies: string[];
+  chronicConditions: string[];
+  emergencyContact: {
+    name: string;
+    relationship: string;
+    phoneNumber: string;
+  }
+};
+
+type MedicalRecord = {
+  id: string;
+  date: string;
+  type: string;
+  doctor: string;
+  hospital: string;
+  description: string;
+};
+
+type Appointment = {
+  id: string;
+  date: string;
+  time: string;
+  doctor: string;
+  hospital: string;
+  department: string;
+  status: string;
+};
+
+type Prescription = {
+  id: string;
+  date: string;
+  medication: string;
+  dosage: string;
+  frequency: string;
+  duration: string;
+  doctor: string;
+  hospital: string;
+  status: string;
+};
+
 const PatientDashboard = () => {
   const [activeTab, setActiveTab] = useState("overview");
   
@@ -77,7 +127,7 @@ const PatientDashboard = () => {
           relationship: 'Contact',
           phoneNumber: patientData?.emergency_contact_phone || 'Not provided'
         }
-      };
+      } as PatientInfoType;
     }
   });
 
@@ -105,11 +155,8 @@ const PatientDashboard = () => {
         // Get doctor's name
         let doctorName = 'Unknown Doctor';
         if (record.staff) {
-          // Fetch doctor's name from users table using staff.user_id
-          if (record.staff.user_id) {
-            // This would ideally use a join, but for now we'll format it this way
-            doctorName = `Dr. ${record.staff.specialization || ''}`;
-          }
+          // Format doctor name based on available data
+          doctorName = `Dr. ${record.staff.specialization || ''}`;
         }
         
         return {
@@ -119,7 +166,7 @@ const PatientDashboard = () => {
           doctor: doctorName,
           hospital: record.hospitals?.name || 'Unknown Hospital',
           description: record.diagnosis || record.notes || 'No description provided.',
-        };
+        } as MedicalRecord;
       });
     }
   });
@@ -136,11 +183,7 @@ const PatientDashboard = () => {
       
       const { data, error } = await supabase
         .from('appointments')
-        .select(`
-          *,
-          hospitals:hospital_id(name),
-          doctors:doctor_id(full_name)
-        `)
+        .select('*, hospitals:hospital_id(*), doctors:doctor_id(*)')
         .eq('patient_id', session!.user.id)
         .gte('appointment_date', now)
         .order('appointment_date', { ascending: true })
@@ -156,7 +199,7 @@ const PatientDashboard = () => {
         hospital: appointment.hospitals?.name || 'Unknown Hospital',
         department: appointment.department || 'General',
         status: appointment.status || 'Scheduled',
-      }));
+      } as Appointment));
     }
   });
 
@@ -168,36 +211,35 @@ const PatientDashboard = () => {
     queryKey: ['patientPrescriptions', session?.user?.id],
     enabled: !!session?.user?.id,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('prescriptions')
-        .select(`
-          *,
-          hospitals:hospital_id(name),
-          doctors:doctor_id(full_name)
-        `)
-        .eq('patient_id', session!.user.id)
-        .order('created_at', { ascending: false });
-      
-      if (error) {
-        console.error("Error fetching prescriptions:", error);
-        // If the table doesn't exist yet, return empty array
-        if (error.code === "42P01") {
+      try {
+        // Check if prescriptions table exists
+        const { data, error } = await supabase
+          .from('prescriptions')
+          .select('*, hospitals:hospital_id(*), doctors:doctor_id(*)')
+          .eq('patient_id', session!.user.id)
+          .order('created_at', { ascending: false });
+        
+        if (error) {
+          console.error("Error fetching prescriptions:", error);
+          // If table doesn't exist yet, return empty array
           return [];
         }
-        throw error;
+        
+        return data.map((prescription) => ({
+          id: prescription.id,
+          date: formatDate(prescription.created_at),
+          medication: prescription.medication_name || 'Unknown Medication',
+          dosage: prescription.dosage || 'As directed',
+          frequency: prescription.frequency || 'As needed',
+          duration: prescription.duration || 'As prescribed',
+          doctor: prescription.doctors?.full_name ? `Dr. ${prescription.doctors.full_name}` : 'Unknown Doctor',
+          hospital: prescription.hospitals?.name || 'Unknown Hospital',
+          status: prescription.status || 'Active',
+        } as Prescription));
+      } catch (error) {
+        console.error("Error in prescription query:", error);
+        return [];
       }
-      
-      return data.map((prescription) => ({
-        id: prescription.id,
-        date: formatDate(prescription.created_at),
-        medication: prescription.medication_name || 'Unknown Medication',
-        dosage: prescription.dosage || 'As directed',
-        frequency: prescription.frequency || 'As needed',
-        duration: prescription.duration || 'As prescribed',
-        doctor: prescription.doctors?.full_name ? `Dr. ${prescription.doctors.full_name}` : 'Unknown Doctor',
-        hospital: prescription.hospitals?.name || 'Unknown Hospital',
-        status: prescription.status || 'Active',
-      }));
     }
   });
 
@@ -414,7 +456,7 @@ const PatientDashboard = () => {
           </CardContent>
         </Card>
 
-        {/* Active Prescriptions */}
+        {/* Prescriptions */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
