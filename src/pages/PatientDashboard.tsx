@@ -19,54 +19,205 @@ import { Button } from "@/components/ui/button";
 import { Calendar, FileText, User, Heart, Clock, Bell, Calendar as CalendarIcon } from "lucide-react";
 import PatientLayout from "@/components/PatientLayout";
 import { toast } from "sonner";
-
-// Mock patient data
-const patientInfo = {
-  id: "P-2023-004",
-  name: "Sarah Williams",
-  dateOfBirth: "19/09/1995",
-  nin: "45678901234",
-  gender: "Female",
-  phoneNumber: "08045678901",
-  email: "sarah.williams@example.com",
-  bloodType: "O+",
-  allergies: ["Penicillin", "Peanuts"],
-  chronicConditions: ["Asthma"],
-  emergencyContact: {
-    name: "John Williams",
-    relationship: "Husband",
-    phoneNumber: "08045678902"
-  }
-};
-
-// Mock medical records
-const medicalRecords = [
-  { id: "MR-2023-001", date: "15/05/2023", type: "Consultation", doctor: "Dr. James Wilson", hospital: "Central Hospital", description: "Annual check-up. Blood pressure normal, advised on diet and exercise." },
-  { id: "MR-2023-002", date: "10/04/2023", type: "Vaccination", doctor: "Dr. Lisa Chen", hospital: "Community Healthcare", description: "Flu shot administered." },
-  { id: "MR-2023-003", date: "05/03/2023", type: "Laboratory", doctor: "Dr. Samantha Lee", hospital: "Central Hospital", description: "Blood test results within normal range." },
-  { id: "MR-2023-004", date: "20/02/2023", type: "Radiology", doctor: "Dr. Michael Brown", hospital: "National Medical Center", description: "Chest X-ray shows no abnormalities." },
-];
-
-// Mock upcoming appointments
-const upcomingAppointments = [
-  { id: "AP-2023-001", date: "20/07/2023", time: "10:30 AM", doctor: "Dr. James Wilson", hospital: "Central Hospital", department: "General Medicine", status: "Confirmed" },
-  { id: "AP-2023-002", date: "05/08/2023", time: "02:15 PM", doctor: "Dr. Samantha Lee", hospital: "Central Hospital", department: "Cardiology", status: "Pending" },
-];
-
-// Mock prescriptions
-const prescriptions = [
-  { id: "PR-2023-001", date: "15/05/2023", medication: "Amoxicillin", dosage: "500mg", frequency: "3 times daily", duration: "7 days", doctor: "Dr. James Wilson", hospital: "Central Hospital", status: "Active" },
-  { id: "PR-2023-002", date: "15/05/2023", medication: "Ibuprofen", dosage: "400mg", frequency: "As needed", duration: "PRN", doctor: "Dr. James Wilson", hospital: "Central Hospital", status: "Active" },
-  { id: "PR-2023-003", date: "10/04/2023", medication: "Loratadine", dosage: "10mg", frequency: "Once daily", duration: "30 days", doctor: "Dr. Lisa Chen", hospital: "Community Healthcare", status: "Completed" },
-];
+import { useQuery } from "@tanstack/react-query";
+import { supabase, formatDate, formatTime } from "@/integrations/supabase/client";
+import { Link } from "react-router-dom";
 
 const PatientDashboard = () => {
   const [activeTab, setActiveTab] = useState("overview");
   
+  // Fetch authenticated user data
+  const { data: session } = useQuery({
+    queryKey: ['session'],
+    queryFn: async () => {
+      const { data } = await supabase.auth.getSession();
+      return data.session;
+    }
+  });
+
+  // Fetch patient profile data
+  const { 
+    data: patientInfo, 
+    isLoading: isLoadingPatient 
+  } = useQuery({
+    queryKey: ['patientInfo', session?.user?.id],
+    enabled: !!session?.user?.id,
+    queryFn: async () => {
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', session!.user.id)
+        .single();
+      
+      if (userError) throw userError;
+      
+      const { data: patientData, error: patientError } = await supabase
+        .from('patients')
+        .select('*')
+        .eq('user_id', session!.user.id)
+        .single();
+      
+      if (patientError && patientError.code !== 'PGRST116') {
+        throw patientError;
+      }
+      
+      return {
+        id: userData.id,
+        name: userData.full_name,
+        email: userData.email,
+        phoneNumber: userData.phone || 'Not provided',
+        dateOfBirth: patientData?.date_of_birth ? formatDate(patientData.date_of_birth) : 'Not provided',
+        nin: patientData?.national_id || 'Not provided',
+        gender: patientData?.gender || 'Not provided',
+        bloodType: patientData?.blood_type || 'Not provided',
+        allergies: patientData?.allergies ? patientData.allergies.split(',').map(a => a.trim()) : [],
+        chronicConditions: [],
+        emergencyContact: {
+          name: patientData?.emergency_contact_name || 'Not provided',
+          relationship: 'Contact',
+          phoneNumber: patientData?.emergency_contact_phone || 'Not provided'
+        }
+      };
+    }
+  });
+
+  // Fetch medical records
+  const { 
+    data: medicalRecords = [], 
+    isLoading: isLoadingRecords 
+  } = useQuery({
+    queryKey: ['patientMedicalRecords', session?.user?.id],
+    enabled: !!session?.user?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('medical_records')
+        .select(`
+          *,
+          hospitals:hospital_id(name),
+          staff:staff_id(*)
+        `)
+        .eq('patient_id', session!.user.id)
+        .order('record_date', { ascending: false });
+      
+      if (error) throw error;
+      
+      return data.map((record) => {
+        // Get doctor's name
+        let doctorName = 'Unknown Doctor';
+        if (record.staff) {
+          // Fetch doctor's name from users table using staff.user_id
+          if (record.staff.user_id) {
+            // This would ideally use a join, but for now we'll format it this way
+            doctorName = `Dr. ${record.staff.specialization || ''}`;
+          }
+        }
+        
+        return {
+          id: record.id,
+          date: formatDate(record.record_date),
+          type: record.record_type || 'Consultation',
+          doctor: doctorName,
+          hospital: record.hospitals?.name || 'Unknown Hospital',
+          description: record.diagnosis || record.notes || 'No description provided.',
+        };
+      });
+    }
+  });
+
+  // Fetch upcoming appointments
+  const { 
+    data: upcomingAppointments = [], 
+    isLoading: isLoadingAppointments 
+  } = useQuery({
+    queryKey: ['patientAppointments', session?.user?.id],
+    enabled: !!session?.user?.id,
+    queryFn: async () => {
+      const now = new Date().toISOString();
+      
+      const { data, error } = await supabase
+        .from('appointments')
+        .select(`
+          *,
+          hospitals:hospital_id(name),
+          doctors:doctor_id(full_name)
+        `)
+        .eq('patient_id', session!.user.id)
+        .gte('appointment_date', now)
+        .order('appointment_date', { ascending: true })
+        .limit(5);
+      
+      if (error) throw error;
+      
+      return data.map((appointment) => ({
+        id: appointment.id,
+        date: formatDate(appointment.appointment_date),
+        time: formatTime(appointment.appointment_date),
+        doctor: appointment.doctors?.full_name ? `Dr. ${appointment.doctors.full_name}` : 'Assigned Doctor',
+        hospital: appointment.hospitals?.name || 'Unknown Hospital',
+        department: appointment.department || 'General',
+        status: appointment.status || 'Scheduled',
+      }));
+    }
+  });
+
+  // Fetch prescriptions
+  const { 
+    data: prescriptions = [], 
+    isLoading: isLoadingPrescriptions 
+  } = useQuery({
+    queryKey: ['patientPrescriptions', session?.user?.id],
+    enabled: !!session?.user?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('prescriptions')
+        .select(`
+          *,
+          hospitals:hospital_id(name),
+          doctors:doctor_id(full_name)
+        `)
+        .eq('patient_id', session!.user.id)
+        .order('created_at', { ascending: false });
+      
+      if (error) {
+        console.error("Error fetching prescriptions:", error);
+        // If the table doesn't exist yet, return empty array
+        if (error.code === "42P01") {
+          return [];
+        }
+        throw error;
+      }
+      
+      return data.map((prescription) => ({
+        id: prescription.id,
+        date: formatDate(prescription.created_at),
+        medication: prescription.medication_name || 'Unknown Medication',
+        dosage: prescription.dosage || 'As directed',
+        frequency: prescription.frequency || 'As needed',
+        duration: prescription.duration || 'As prescribed',
+        doctor: prescription.doctors?.full_name ? `Dr. ${prescription.doctors.full_name}` : 'Unknown Doctor',
+        hospital: prescription.hospitals?.name || 'Unknown Hospital',
+        status: prescription.status || 'Active',
+      }));
+    }
+  });
+
   useEffect(() => {
-    // Simulate loading patient data
-    toast.success("Welcome back, Sarah!");
-  }, []);
+    if (patientInfo) {
+      toast.success(`Welcome back, ${patientInfo.name.split(' ')[0]}!`);
+    }
+  }, [patientInfo]);
+
+  const isLoading = isLoadingPatient || isLoadingRecords || isLoadingAppointments || isLoadingPrescriptions;
+
+  if (isLoading) {
+    return (
+      <PatientLayout>
+        <div className="flex items-center justify-center h-screen">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-health-600"></div>
+        </div>
+      </PatientLayout>
+    );
+  }
 
   return (
     <PatientLayout>
@@ -85,9 +236,12 @@ const PatientDashboard = () => {
             <Button 
               className="bg-health-600 hover:bg-health-700"
               onClick={() => setActiveTab("appointments")}
+              asChild
             >
-              <Calendar className="mr-2 h-4 w-4" />
-              Book Appointment
+              <Link to="/patient-appointments">
+                <Calendar className="mr-2 h-4 w-4" />
+                Book Appointment
+              </Link>
             </Button>
           </div>
         </div>
@@ -105,34 +259,34 @@ const PatientDashboard = () => {
               <div className="space-y-4">
                 <div className="flex flex-col">
                   <span className="text-sm text-muted-foreground">Full Name</span>
-                  <span className="font-medium">{patientInfo.name}</span>
+                  <span className="font-medium">{patientInfo?.name}</span>
                 </div>
                 <div className="flex flex-col">
                   <span className="text-sm text-muted-foreground">Date of Birth</span>
-                  <span className="font-medium">{patientInfo.dateOfBirth}</span>
+                  <span className="font-medium">{patientInfo?.dateOfBirth}</span>
                 </div>
                 <div className="flex flex-col">
                   <span className="text-sm text-muted-foreground">NIN</span>
-                  <span className="font-medium">{patientInfo.nin}</span>
+                  <span className="font-medium">{patientInfo?.nin}</span>
                 </div>
                 <div className="flex flex-col">
                   <span className="text-sm text-muted-foreground">Gender</span>
-                  <span className="font-medium">{patientInfo.gender}</span>
+                  <span className="font-medium">{patientInfo?.gender}</span>
                 </div>
                 <div className="flex flex-col">
                   <span className="text-sm text-muted-foreground">Phone Number</span>
-                  <span className="font-medium">{patientInfo.phoneNumber}</span>
+                  <span className="font-medium">{patientInfo?.phoneNumber}</span>
                 </div>
                 <div className="flex flex-col">
                   <span className="text-sm text-muted-foreground">Email</span>
-                  <span className="font-medium">{patientInfo.email}</span>
+                  <span className="font-medium">{patientInfo?.email}</span>
                 </div>
                 <div className="flex flex-col">
                   <span className="text-sm text-muted-foreground">Blood Type</span>
-                  <span className="font-medium">{patientInfo.bloodType}</span>
+                  <span className="font-medium">{patientInfo?.bloodType}</span>
                 </div>
-                <Button variant="outline" className="w-full mt-4">
-                  Update Information
+                <Button variant="outline" className="w-full mt-4" asChild>
+                  <Link to="/patient-settings">Update Information</Link>
                 </Button>
               </div>
             </CardContent>
@@ -173,7 +327,7 @@ const PatientDashboard = () => {
                           <TableCell className="hidden md:table-cell">{appointment.department}</TableCell>
                           <TableCell>
                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                              appointment.status === "Confirmed" 
+                              appointment.status === "Confirmed" || appointment.status === "confirmed"
                                 ? "bg-green-100 text-green-800" 
                                 : "bg-yellow-100 text-yellow-800"
                             }`}>
@@ -191,7 +345,9 @@ const PatientDashboard = () => {
                   <h3 className="mt-2 text-sm font-semibold text-gray-900">No upcoming appointments</h3>
                   <p className="mt-1 text-sm text-gray-500">Book your next appointment with your healthcare provider.</p>
                   <div className="mt-6">
-                    <Button>Book Appointment</Button>
+                    <Button asChild>
+                      <Link to="/patient-appointments">Book Appointment</Link>
+                    </Button>
                   </div>
                 </div>
               )}
@@ -224,20 +380,34 @@ const PatientDashboard = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {medicalRecords.map((record) => (
-                    <TableRow key={record.id}>
-                      <TableCell>{record.date}</TableCell>
-                      <TableCell>{record.type}</TableCell>
-                      <TableCell>{record.doctor}</TableCell>
-                      <TableCell className="hidden md:table-cell">{record.hospital}</TableCell>
-                      <TableCell className="hidden md:table-cell max-w-sm truncate">{record.description}</TableCell>
-                      <TableCell className="text-right">
-                        <Button variant="outline" size="sm">
-                          View Details
-                        </Button>
+                  {medicalRecords.length > 0 ? (
+                    medicalRecords.map((record) => (
+                      <TableRow key={record.id}>
+                        <TableCell>{record.date}</TableCell>
+                        <TableCell>{record.type}</TableCell>
+                        <TableCell>{record.doctor}</TableCell>
+                        <TableCell className="hidden md:table-cell">{record.hospital}</TableCell>
+                        <TableCell className="hidden md:table-cell max-w-sm truncate">{record.description}</TableCell>
+                        <TableCell className="text-right">
+                          <Button variant="outline" size="sm" asChild>
+                            <Link to={`/patient-records?id=${record.id}`}>
+                              View Details
+                            </Link>
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={6} className="h-24 text-center">
+                        <div className="flex flex-col items-center justify-center">
+                          <FileText className="h-8 w-8 text-muted-foreground mb-2" />
+                          <p className="text-sm text-muted-foreground mb-2">No medical records found</p>
+                          <p className="text-xs text-muted-foreground">Your medical history will appear here once available</p>
+                        </div>
                       </TableCell>
                     </TableRow>
-                  ))}
+                  )}
                 </TableBody>
               </Table>
             </div>
@@ -269,24 +439,36 @@ const PatientDashboard = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {prescriptions.map((prescription) => (
-                    <TableRow key={prescription.id}>
-                      <TableCell>{prescription.date}</TableCell>
-                      <TableCell className="font-medium">{prescription.medication}</TableCell>
-                      <TableCell>{prescription.dosage}</TableCell>
-                      <TableCell className="hidden md:table-cell">{prescription.frequency}</TableCell>
-                      <TableCell className="hidden md:table-cell">{prescription.doctor}</TableCell>
-                      <TableCell>
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          prescription.status === "Active" 
-                            ? "bg-green-100 text-green-800" 
-                            : "bg-gray-100 text-gray-800"
-                        }`}>
-                          {prescription.status}
-                        </span>
+                  {prescriptions.length > 0 ? (
+                    prescriptions.map((prescription) => (
+                      <TableRow key={prescription.id}>
+                        <TableCell>{prescription.date}</TableCell>
+                        <TableCell className="font-medium">{prescription.medication}</TableCell>
+                        <TableCell>{prescription.dosage}</TableCell>
+                        <TableCell className="hidden md:table-cell">{prescription.frequency}</TableCell>
+                        <TableCell className="hidden md:table-cell">{prescription.doctor}</TableCell>
+                        <TableCell>
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            prescription.status === "Active" || prescription.status === "active"
+                              ? "bg-green-100 text-green-800" 
+                              : "bg-gray-100 text-gray-800"
+                          }`}>
+                            {prescription.status}
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={6} className="h-24 text-center">
+                        <div className="flex flex-col items-center justify-center">
+                          <Heart className="h-8 w-8 text-muted-foreground mb-2" />
+                          <p className="text-sm text-muted-foreground mb-2">No prescriptions found</p>
+                          <p className="text-xs text-muted-foreground">Your prescriptions will appear here once available</p>
+                        </div>
                       </TableCell>
                     </TableRow>
-                  ))}
+                  )}
                 </TableBody>
               </Table>
             </div>
