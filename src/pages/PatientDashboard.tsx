@@ -73,6 +73,15 @@ type Prescription = {
   status: string;
 };
 
+// Define types for database responses
+type HospitalResponse = {
+  name: string;
+};
+
+type DoctorResponse = {
+  full_name: string;
+};
+
 const PatientDashboard = () => {
   const [activeTab, setActiveTab] = useState("overview");
   
@@ -191,15 +200,28 @@ const PatientDashboard = () => {
       
       if (error) throw error;
       
-      return data.map((appointment) => ({
-        id: appointment.id,
-        date: formatDate(appointment.appointment_date),
-        time: formatTime(appointment.appointment_date),
-        doctor: appointment.doctors?.full_name ? `Dr. ${appointment.doctors.full_name}` : 'Assigned Doctor',
-        hospital: appointment.hospitals?.name || 'Unknown Hospital',
-        department: appointment.department || 'General',
-        status: appointment.status || 'Scheduled',
-      } as Appointment));
+      return data.map((appointment) => {
+        // Handle possible null or missing data safely
+        let doctorName = 'Assigned Doctor';
+        if (appointment.doctors && typeof appointment.doctors === 'object' && 'full_name' in appointment.doctors) {
+          doctorName = appointment.doctors.full_name ? `Dr. ${appointment.doctors.full_name}` : 'Assigned Doctor';
+        }
+        
+        let hospitalName = 'Unknown Hospital';
+        if (appointment.hospitals && typeof appointment.hospitals === 'object' && 'name' in appointment.hospitals) {
+          hospitalName = appointment.hospitals.name || 'Unknown Hospital';
+        }
+        
+        return {
+          id: appointment.id,
+          date: formatDate(appointment.appointment_date),
+          time: formatTime(appointment.appointment_date),
+          doctor: doctorName,
+          hospital: hospitalName,
+          department: appointment.department || 'General',
+          status: appointment.status || 'Scheduled',
+        } as Appointment;
+      });
     }
   });
 
@@ -225,17 +247,30 @@ const PatientDashboard = () => {
           return [];
         }
         
-        return data.map((prescription) => ({
-          id: prescription.id,
-          date: formatDate(prescription.created_at),
-          medication: prescription.medication_name || 'Unknown Medication',
-          dosage: prescription.dosage || 'As directed',
-          frequency: prescription.frequency || 'As needed',
-          duration: prescription.duration || 'As prescribed',
-          doctor: prescription.doctors?.full_name ? `Dr. ${prescription.doctors.full_name}` : 'Unknown Doctor',
-          hospital: prescription.hospitals?.name || 'Unknown Hospital',
-          status: prescription.status || 'Active',
-        } as Prescription));
+        return data.map((prescription: any) => {
+          // Handle possible null or missing data safely
+          let doctorName = 'Unknown Doctor';
+          if (prescription.doctors && typeof prescription.doctors === 'object' && 'full_name' in prescription.doctors) {
+            doctorName = prescription.doctors.full_name ? `Dr. ${prescription.doctors.full_name}` : 'Unknown Doctor';
+          }
+          
+          let hospitalName = 'Unknown Hospital';
+          if (prescription.hospitals && typeof prescription.hospitals === 'object' && 'name' in prescription.hospitals) {
+            hospitalName = prescription.hospitals.name || 'Unknown Hospital';
+          }
+          
+          return {
+            id: prescription.id,
+            date: formatDate(prescription.created_at),
+            medication: prescription.medication_name || 'Unknown Medication',
+            dosage: prescription.dosage || 'As directed',
+            frequency: prescription.frequency || 'As needed',
+            duration: prescription.duration || 'As prescribed',
+            doctor: doctorName,
+            hospital: hospitalName,
+            status: prescription.status || 'Active',
+          } as Prescription;
+        });
       } catch (error) {
         console.error("Error in prescription query:", error);
         return [];
